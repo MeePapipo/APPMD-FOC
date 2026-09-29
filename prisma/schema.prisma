@@ -1,0 +1,432 @@
+// FOC Calculator v2 — data model
+// Target: PostgreSQL (Azure Database for PostgreSQL in production).
+//
+// Reproduces the driver-based calculation model from ~/foc-excel (Master_Assays /
+// Master_Items / TPB), not v1's Excel-formula-string model. See src/lib/calc/*
+// for the engine that evaluates MasterAssay/MasterItem/TpbEntry into a Submission.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Team {
+  NORTH
+  SOUTH
+  PRIVATE
+  BUSINESS_PARTNER
+}
+
+enum System {
+  S6800 // cobas 6800/8800 (shares reagent kits/pricing with S5800 for the 20 common assays)
+  S5800 // cobas 5800
+  S4800 // cobas 4800 — no batch/TPB concept, weighted-linear driver only
+}
+
+enum Driver {
+  BATCH // quantity keys off runs/batches of the applicable assays (6800/5800 only)
+  TEST // quantity keys off raw test counts of the applicable assays
+}
+
+/// Where a SubmissionLine's quantity came from.
+enum LineSource {
+  CALCULATED // driver output from MasterItem (the engine decided the quantity)
+  MANUAL // rep picked the item and typed the quantity (AdditionalFocItem)
+}
+
+enum ForecastStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  VOID
+}
+
+/// One row per (system, assay code) — mirrors ~/foc-excel/data/assays.json.
+/// Batch groups (assays sharing one run line, e.g. SARS192+SARS480) are derived
+/// at query time by grouping on (system, batchRow), not stored as a separate table.
+model MasterAssay {
+  id                   String   @id @default(cuid())
+  system               System
+  code                 String
+  srcRow               Int
+  batchRow             Int? // null for cobas 4800 (no batch concept)
+  batchLabel           String?
+  category             String?
+  materialNo           String
+  dkshCode             String?
+  description          String
+  usageType            String?
+  usageGroup           String?
+  packText             String?
+  packSize             Int
+  unitText             String?
+  price                Float?
+  pricePerTest         Float?
+  testsPerBatchDefault Int?
+  negCode              String? // audit/display only ("neg" in source data)
+  active               Boolean  @default(true)
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([system, code])
+  @@index([system])
+}
+
+/// One row per physical consumable line per system — mirrors
+/// ~/foc-excel/data/items.json. `appliesTo: null` = every assay code on this
+/// system (BATCH_ALL/TEST_ALL); `[]` = none (used with onDemand); `[...]` =
+/// named subset. This null-vs-empty-array distinction is load-bearing.
+model MasterItem {
+  id           String   @id @default(cuid())
+  system       System
+  srcRow       Int? // null for manually-appended items with no row in the master spreadsheet
+  group        String // Control | Generic | Conditional | Optional (display/filter only)
+  category     String?
+  materialNo   String
+  dkshCode     String?
+  description  String
+  usageType    String?
+  usageGroup   String?
+  optional     Boolean  @default(false)
+  onDemand     Boolean  @default(false)
+  packText     String?
+  packSize     Int
+  consumption  Float
+  coverage     Float    @default(1)
+  unitText     String?
+  price        Float?
+  priceText    String?
+  driver       Driver
+  appliesTo    String[] // see note above re: null-equivalent — Prisma has no nullable-array
+  appliesToAll Boolean  @default(false) // true replaces the "appliesTo === null" (all-assays) case
+  weights      Json? // cobas 4800 only: { assayCode: rate }
+  srcFormula   String? // audit/traceability only, never evaluated
+  fixNote      String?
+  active       Boolean  @default(true) // mirrors MasterAssay.active — filtered in src/lib/calc/service.ts
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([system, materialNo])
+  @@index([materialNo])
+  @@index([system])
+}
+
+/// Catalogue of give-away consumables a rep may add to any order at a quantity
+/// of their choosing — sourced from "Addtional FOC.xlsx" (the filename's typo
+/// is the customer's). Deliberately NOT a MasterItem: these have no system, no
+/// driver, no appliesTo and no consumption rate, because no formula decides
+/// how many to give. Pricing still comes from here and never from the client,
+/// so a rep cannot understate the FOC value of what they hand out.
+model AdditionalFocItem {
+  id          String   @id @default(cuid())
+  materialNo  String   @unique
+  dkshCode    String?
+  description String
+  packSize    Int
+  unitText    String?
+  price       Float?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Singleton settings for the TPB (tests-per-batch) table.
+model TpbSettings {
+  id        String   @id @default("singleton")
+  floor6800 Int      @default(24)
+  floor5800 Int      @default(6)
+  method    String? // free-text methodology note, copied from tpb.json's "method"
+  asOf      DateTime?
+  updatedAt DateTime @updatedAt
+}
+
+/// Real tests-per-batch per (system, assay code), refreshed periodically from
+/// eLP (see the elp-tpb-refresh skill). Bulk-replaceable via the admin console —
+/// see AuditLog for import history. Combos with no real usage are simply absent
+/// (falls back to TpbSettings.floor{system} at query time, not backfilled here).
+model TpbEntry {
+  id             String   @id @default(cuid())
+  system         System
+  code           String
+  tpb            Float
+  confidence     String // "normal" | "low"
+  monthsWithData String?
+  totalRuns      Int?
+  totalSamples   Int?
+  notes          String?
+  asOf           DateTime @default(now())
+
+  @@unique([system, code])
+}
+
+/// Customer account (from the Account tab).
+model Account {
+  id            String   @id @default(cuid())
+  accountNumber String   @unique
+  accountName   String
+  active        Boolean  @default(true)
+  province      String? // placeholder, unpopulated day 1
+  salesRepEmail String? // placeholder, unpopulated day 1
+
+  submissions      Submission[]
+  annualForecasts  AnnualForecast[]
+  quotas           Quota[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountName])
+}
+
+/// App user. Auto-provisioned as USER on first Entra/dev sign-in (admins
+/// seeded from the ADMIN_EMAILS allowlist, see src/auth.ts), or created
+/// directly via self-registration with a passwordHash.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  role         Role     @default(USER)
+  passwordHash String? // null for Entra/dev-only users; set for self-registered + seeded admin
+  team         Team? // profile label / dashboard filter only, never an access boundary
+  active       Boolean  @default(true) // deactivated accounts are blocked at login (src/auth.ts authorize())
+  lastLoginAt  DateTime? // bumped once per real sign-in in src/auth.ts's jwt callback
+  loginCount   Int      @default(0)
+
+  submissions      Submission[]
+  annualForecasts  AnnualForecast[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A persisted, (normally) immutable order — the record that proves a rep used
+/// the tool. Can span multiple systems (e.g. 6800 + 5800 test volumes in one
+/// order for one account), matching how the real calculation combines shared
+/// SKUs across systems before rounding once. Admin may edit/void; reps cannot
+/// self-edit once submitted, to avoid quota race conditions.
+model Submission {
+  id             String   @id @default(cuid())
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id])
+  accountNumber  String // snapshot
+  accountName    String // snapshot
+  createdById    String?
+  createdBy      User?    @relation(fields: [createdById], references: [id])
+  createdByEmail String
+  year           Int // explicit, used for quota-year bucketing (not derived from createdAt at query time)
+  deductStock    Boolean  @default(false)
+
+  revenue Decimal @db.Decimal(14, 2)
+  focValue Decimal @db.Decimal(14, 2)
+  focPct  Decimal @db.Decimal(7, 4)
+
+  status SubmissionStatus @default(SUBMITTED)
+
+  editedById    String?
+  editedByEmail String?
+  editedAt      DateTime?
+
+  assayInputs SubmissionAssayInput[]
+  reagents    SubmissionReagent[]
+  lines       SubmissionLine[]
+
+  createdAt DateTime @default(now())
+
+  @@index([accountNumber])
+  @@index([createdByEmail])
+  @@index([year])
+  @@index([createdAt])
+}
+
+/// Raw rep-entered test volume per (system, assay code) for a submission —
+/// needed to recompute/re-audit and for "tests processed" usage reporting.
+model SubmissionAssayInput {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  system       System
+  assayCode    String
+  tests        Int
+
+  @@index([submissionId])
+}
+
+/// Snapshot of the main-reagent (revenue side) lines at submit time — the
+/// mirror image of SubmissionLine on the FOC side. Stored rather than
+/// recomputed at export time because MasterAssay.price can change afterwards,
+/// which would make a re-derived summary disagree with the Submission.revenue
+/// that was locked in when the rep confirmed the order.
+model SubmissionReagent {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  assayCode    String
+  description  String
+  materialNo   String
+  dkshCode     String?
+  systems      System[] // which system(s) contributed tests to this kit
+  tests        Int
+  packSize     Int
+  qty          Float // boxes, rounded up once across systems
+  unitPrice    Float?
+  lineValue    Decimal    @db.Decimal(14, 2)
+
+  @@index([submissionId])
+}
+
+/// One combined-SKU line of a submission. Snapshots the master fields used.
+model SubmissionLine {
+  id            String     @id @default(cuid())
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  materialNo    String
+  description   String
+  category      String?
+  unitText      String?
+  source        LineSource @default(CALCULATED)
+  driver        Driver? // null for MANUAL lines — no formula drove them
+  systems       System[] // which system(s) contributed to this combined SKU (empty for MANUAL)
+
+  // The v1 workbook's summary sheet columns, in order:
+  //   calculatedQty - stockOnHand = afterStockQty; afterStockQty + adjustedQty = finalQty
+  // (each step floored at 0). adjustedQty is a signed DELTA, not a replacement
+  // value — matching v1's "ปรับ (+/-)" column, and leaving finalQty as the one
+  // authoritative quantity rather than duplicating it.
+  calculatedQty Float // driver output before adjustment (post cross-system combine + rounding)
+  stockOnHand   Float? // null = rep did not state a stock level (distinct from a stated 0)
+  afterStockQty Float?
+  adjustedQty   Float? // signed delta applied on top of afterStockQty
+  adjustComment String? // mandatory whenever adjustedQty is non-zero
+  finalQty      Float // authoritative order quantity
+
+  unitPrice Float?
+  lineValue Decimal @db.Decimal(14, 2) // finalQty × unitPrice, 0 if unpriced/unticked
+
+  onDemand Boolean @default(false)
+  optional Boolean @default(false)
+  included Boolean @default(true) // optional item was ticked
+
+  createdAt DateTime @default(now())
+
+  @@index([submissionId])
+  @@index([materialNo])
+}
+
+/// Rep-submitted annual test-volume forecast per account/year, gatekept by
+/// admin approval before it produces an active Quota. Rejection resets status
+/// back to DRAFT on the same row rather than spawning a new historical row.
+model AnnualForecast {
+  id             String         @id @default(cuid())
+  accountId      String
+  account        Account        @relation(fields: [accountId], references: [id])
+  year           Int
+  status         ForecastStatus @default(DRAFT)
+  createdById    String?
+  createdBy      User?          @relation(fields: [createdById], references: [id])
+  createdByEmail String
+  submittedAt    DateTime?
+  decidedById    String?
+  decidedByEmail String?
+  decidedAt      DateTime?
+  adminComment   String?
+
+  lines ForecastLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, year])
+}
+
+model ForecastLine {
+  id           String         @id @default(cuid())
+  forecastId   String
+  forecast     AnnualForecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+  system       System
+  assayCode    String
+  annualTests  Int
+
+  @@index([forecastId])
+}
+
+/// Materialized only on forecast approval. No stored "used" counter — used-vs-
+/// allotted is computed live by summing SubmissionLine.finalQty across
+/// SUBMITTED submissions for (accountId, year, materialNo), which sidesteps
+/// quota race conditions entirely at this data volume.
+model Quota {
+  id          String  @id @default(cuid())
+  accountId   String
+  account     Account @relation(fields: [accountId], references: [id])
+  year        Int
+  materialNo  String
+  allottedQty Float
+  forecastId  String // which approved AnnualForecast produced this
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, year, materialNo])
+}
+
+/// Real nationwide sales/cost/FOC actuals imported from the Tableau
+/// "Data for FOC" crosstab export (admin-only, on a schedule — see
+/// src/lib/dashboard/focActualsImport.ts). One row per (year, month,
+/// account, product) — the same grain the source crosstab itself uses.
+/// Deliberately separate from Submission/SubmissionLine: this is
+/// SAP/DKSH-sourced ground truth, not orders entered through this
+/// calculator, and the two are shown in separate Dashboard tabs rather than
+/// summed together.
+model FocActual {
+  id          String   @id @default(cuid())
+  year        Int
+  month       Int
+  team        String? // TLevel3 from the source export
+  rep         String? // TLevel6 from the source export
+  accountName String // Ship-to account name, cleaned (HOSP. -> HOSPITAL)
+  materialNo  String // "" when the source row had no parseable "code - name" product string
+  productName String
+  revenue     Float    @default(0) // only counted for "Reagents, kits" category rows, matching the source tool
+  revenueQty  Float    @default(0) // sold qty, same category restriction as revenue
+  soldQty     Float    @default(0) // sold qty regardless of category
+  focCost     Float    @default(0)
+  focQty      Float    @default(0)
+  bonusCost   Float    @default(0)
+  bonusQty    Float    @default(0)
+  totalCost   Float    @default(0)
+  tests       Float    @default(0)
+  importedAt  DateTime @updatedAt
+
+  @@unique([year, month, accountName, materialNo, productName])
+  @@index([year, month])
+}
+
+/// Generic audit trail for admin mutations and rep adjustments.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userEmail String
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

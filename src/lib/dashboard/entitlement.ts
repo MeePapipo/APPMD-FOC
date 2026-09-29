@@ -1,0 +1,385 @@
+/**
+ * Per-account "Quota vs actual given" entitlement — Part 2 of the account
+ * drill-down (see the approved plan). Ported deliberately, not derived on
+ * the fly, from the reference project's `foc-core.js` (`evaluateSystem`,
+ * `evaluate4800`, `buildEntitlement`) — that engine is already correct and
+ * verified against this exact source data; this module reuses `foc-webapp`'s
+ * OWN `MasterAssay`/`MasterItem`/`AdditionalFocItem`/`TpbEntry` tables and
+ * OWN batch/driver primitives (`groupsFor`/`runsForSystem`/`unitsForItem`/
+ * `unitsFor4800Item`) rather than forking a parallel copy of the master
+ * workbook, so this can never drift from what the Calculator itself uses.
+ *
+ * Two load-bearing rules, confirmed against real data before writing this
+ * (see the plan for how):
+ *
+ * 1. **Quota is driven by Selling Quantity only, never `FocActual.tests`.**
+ *    Free reagent must never enlarge its own quota (praditww's rule,
+ *    reversed in the reference project on 2026-09-29 for the same reason).
+ *    The caller passes `FocActual.soldQty` (unrestricted) as `sold`, not
+ *    `revenueQty` — for a reagent-kit row the two are numerically identical
+ *    (a reagent materialNo is always "Reagents, kits" category), but a
+ *    non-reagent give-away item (an Additional FOC consumable, say) can
+ *    still carry a real Selling Quantity movement that `revenueQty` would
+ *    silently zero out. Confirmed against a real account: the reference
+ *    shows a -1 Selling Qty on a non-reagent row that `revenueQty` reported
+ *    as 0.
+ * 2. **`MasterAssay.materialNo` does not uniquely imply a system** — 18 of
+ *    25 distinct material numbers are shared between 6800 and 5800 (real
+ *    reagent kits sold under one material number, run on either analyser).
+ *    Which system(s) an account actually runs has to be *inferred* from a
+ *    small set of platform-EXCLUSIVE consumables (`PLATFORM_MARKERS`),
+ *    weighing the evidence rather than trusting bare presence — a single
+ *    stray box of the "wrong" platform's plate must not flip the whole
+ *    account. Verified these exact material numbers exist in this app's own
+ *    `MasterItem`/`MasterAssay` tables with matching descriptions before
+ *    trusting the port.
+ */
+
+import type { AssayLite, ItemLite } from "@/lib/calc/types";
+import { groupsFor, runsForSystem } from "@/lib/calc/batches";
+import { unitsForItem } from "@/lib/calc/driver";
+import { unitsFor4800Item } from "@/lib/calc/engine4800";
+import { buildTpbTable, type TpbTableInput } from "@/lib/calc/tpb";
+import { ceil } from "@/lib/calc/round";
+
+type Sys658 = "6800" | "5800";
+
+/** Platform-EXCLUSIVE consumables — reagent kits are shared across 6800/5800
+ * so they can't reveal the platform; these can't. Ported verbatim from
+ * `foc-core.js` (confirmed present in this app's own MasterItem table). */
+const PLATFORM_MARKERS: Record<Sys658, Record<string, string>> = {
+  "6800": {
+    "05534917001": "cobas omni Processing Plate",
+    "05534925001": "cobas omni Pipette Tips",
+    "05534941001": "cobas omni Amplification Plate",
+  },
+  "5800": {
+    "04639642001": "Tip CORE TIPS with filter, 1 mL",
+    "07345607001": "Tip CORE TIPS with filter, 300 uL",
+    "08413975001": "cobas omni Processing Plate 24",
+    "08413983001": "cobas omni Liquid Waste Plate 24",
+    "08499853001": "cobas omni Amplification Plate 24",
+  },
+};
+
+/** cobas 4800 reagents carry their own material numbers, so unlike
+ * 6800-vs-5800 the platform is not a guess: presence alone is proof. */
+const MARKERS_4800: Record<string, string> = {
+  "05235901190": "cobas 4800 HPV AMP/DET 240T",
+  "05235910190": "cobas 4800 HPV AMP/DET 960T",
+  "05235952190": "cobas 4800 CT/NG AMP/DET 240T",
+  "07865970190": "cobas 4800 CMV 120T",
+  "06979564190": "cobas 4800 HBV 120T",
+  "06979602190": "cobas 4800 HCV 120T",
+};
+
+export type MaterialGiven = { sold: number; foc: number; bonus: number; freeCost: number; productName: string };
+
+export type PlatformResult = { platform: string; basis: string; candidates: Sys658[]; has4800: boolean };
+
+/** Weighs platform-marker evidence instead of trusting bare presence — a
+ * side needs >=2x the other's distinct markers to win outright; anything
+ * closer is a genuine dual-instrument lab ("both"). Ported verbatim from
+ * `foc-core.js`'s `buildEntitlement` (the AMNAJCHAROEN HOSPITAL case: one
+ * stray 6800 plate must not flip a 5800-only lab). */
+export function detectPlatform(got: Map<string, MaterialGiven>): PlatformResult {
+  const present = (sys: Sys658) =>
+    Object.keys(PLATFORM_MARKERS[sys]).filter((m) => {
+      const d = got.get(m);
+      return d && d.sold + d.foc + d.bonus > 0;
+    });
+  const present6800 = present("6800");
+  const present5800 = present("5800");
+  const present48 = Object.keys(MARKERS_4800).filter((m) => {
+    const d = got.get(m);
+    return d && d.sold + d.foc + d.bonus > 0;
+  });
+  const has4800 = present48.length > 0;
+
+  const named = (sys: Sys658, mats: string[]) => mats.map((m) => PLATFORM_MARKERS[sys][m]).join(", ");
+  const nm6 = present6800.length;
+  const nm5 = present5800.length;
+
+  let platform: string;
+  let basis: string;
+  let candidates: Sys658[];
+  if (nm6 && nm5) {
+    if (nm6 >= nm5 * 2) {
+      platform = "6800";
+      candidates = ["6800"];
+      basis = `พบ ${named("6800", present6800)} (${nm6} ชนิด) · มีของรุ่น 5800 ปนมา ${nm5} ชนิด (${named("5800", present5800)}) — น่าจะส่งผิดรุ่น`;
+    } else if (nm5 >= nm6 * 2) {
+      platform = "5800";
+      candidates = ["5800"];
+      basis = `พบ ${named("5800", present5800)} (${nm5} ชนิด) · มีของรุ่น 6800 ปนมา ${nm6} ชนิด (${named("6800", present6800)}) — น่าจะส่งผิดรุ่น`;
+    } else {
+      platform = "both";
+      candidates = ["6800", "5800"];
+      basis = "พบ consumable เฉพาะของทั้งสองรุ่นในสัดส่วนใกล้เคียงกัน";
+    }
+  } else if (nm6) {
+    platform = "6800";
+    candidates = ["6800"];
+    basis = "พบ " + named("6800", present6800);
+  } else if (nm5) {
+    platform = "5800";
+    candidates = ["5800"];
+    basis = "พบ " + named("5800", present5800);
+  } else if (has4800) {
+    platform = "4800";
+    candidates = [];
+    basis = "";
+  } else {
+    platform = "unknown";
+    candidates = ["6800", "5800"];
+    basis = "ไม่พบ consumable ที่ระบุรุ่นเครื่องได้ — คิดด้วยรุ่นที่ให้สิทธิ์มากกว่า เพื่อไม่ให้ขึ้นธงเกินจริง";
+  }
+
+  if (has4800) {
+    const names = present48.map((m) => MARKERS_4800[m]).join(", ");
+    basis = basis
+      ? `${basis} · และพบน้ำยา cobas 4800 (${names}) — คิดสิทธิ์ 4800 บวกเพิ่มแยกต่างหาก`
+      : `พบน้ำยา cobas 4800 (${names})`;
+    platform = platform === "4800" ? "4800" : `${platform}+4800`;
+  }
+
+  return { platform, basis, candidates, has4800 };
+}
+
+/** materialNo -> first-matching assay for a system — "one material can serve
+ * two codes (e.g. an HPV kit shared by a standard and a SurePath code); the
+ * shipment can't be split, so the first code absorbs all of its tests",
+ * ported verbatim from `foc-core.js`. Iteration order matches `assays`'
+ * own order (MasterAssay's `sortOrder`, same as the Calculator uses). */
+function firstAssayByMaterial(assays: AssayLite[], system: string): Map<string, AssayLite> {
+  const map = new Map<string, AssayLite>();
+  for (const a of assays) {
+    if (a.system !== system) continue;
+    if (!map.has(a.materialNo)) map.set(a.materialNo, a);
+  }
+  return map;
+}
+
+/** tests[code] = Selling Quantity (packs, > 0 only — a credit/return must
+ * never produce a negative test volume) x pack size, for one system. */
+function testsFromSelling(got: Map<string, MaterialGiven>, assayByMat: Map<string, AssayLite>): Record<string, number> {
+  const tests: Record<string, number> = {};
+  for (const [mat, a] of assayByMat) {
+    const packs = got.get(mat)?.sold ?? 0;
+    if (packs > 0) tests[a.code] = (tests[a.code] ?? 0) + packs * a.packSize;
+  }
+  return tests;
+}
+
+export type SystemExpectation = { tests: Record<string, number>; batches: Record<string, number>; expected: Record<string, number> };
+
+/** Expected item quantities for one of 6800/5800, reusing this app's own
+ * `groupsFor`/`runsForSystem`/`unitsForItem` — the exact same batch/driver
+ * primitives the Calculator itself runs on a real order, just fed a
+ * Selling-Quantity-derived test vector instead of a rep's live input. */
+function evaluate658(
+  system: Sys658,
+  got: Map<string, MaterialGiven>,
+  assays: AssayLite[],
+  items: ItemLite[],
+  tpbInput: TpbTableInput,
+): SystemExpectation {
+  const assayByMat = firstAssayByMaterial(assays, system);
+  const tests = testsFromSelling(got, assayByMat);
+  const sysAssays = assays.filter((a) => a.system === system);
+  const groups = groupsFor(system, sysAssays);
+  const tpbTable = buildTpbTable(tpbInput);
+  const runsMap = runsForSystem(system, groups, tests, tpbTable);
+  const allCodes = sysAssays.map((a) => a.code);
+
+  const expected: Record<string, number> = {};
+  for (const item of items) {
+    if (item.system !== system) continue;
+    const units = unitsForItem(item, allCodes, groups, runsMap, tests);
+    if (units <= 0) continue;
+    const qty = ceil(units / (item.packSize * item.coverage));
+    if (qty > 0) expected[item.materialNo] = (expected[item.materialNo] ?? 0) + qty;
+  }
+  // Batches, keyed by assay code (not batchRow) — every code in a merged
+  // batch group shares its group's run count, matching `foc-core.js`'s own
+  // `batches` shape (`g.codes.forEach(c => batches[c] = groupBatches[gr])`).
+  const batches: Record<string, number> = {};
+  for (const g of groups) {
+    const runs = runsMap.get(g.batchRow) ?? 0;
+    for (const code of g.codes) batches[code] = runs;
+  }
+  return { tests, batches, expected };
+}
+
+/** cobas 4800: no batch/TPB concept — a per-assay weighted-linear model
+ * whose weights already bake in whatever batch division the source formula
+ * had (see `engine4800.ts`). No `coverage` division here either — matches
+ * `foc-core.js`'s `evaluate4800` exactly (`packSize` only). */
+function evaluate4800(got: Map<string, MaterialGiven>, assays: AssayLite[], items: ItemLite[]): SystemExpectation {
+  const assayByMat = firstAssayByMaterial(assays, "4800");
+  const tests = testsFromSelling(got, assayByMat);
+
+  const expected: Record<string, number> = {};
+  for (const item of items) {
+    if (item.system !== "4800" || !item.weights) continue;
+    const units = unitsFor4800Item(item, tests); // deliberately not rounded before dividing by packSize
+    if (units <= 0) continue;
+    const qty = item.packSize ? ceil(units / item.packSize) : 0;
+    if (qty > 0) expected[item.materialNo] = (expected[item.materialNo] ?? 0) + qty;
+  }
+  return { tests, batches: {}, expected };
+}
+
+export type EntitlementRow = {
+  materialNo: string;
+  productName: string;
+  optional: boolean;
+  expected: number;
+  focQty: number;
+  bonusQty: number;
+  free: number; // FOC + Bonus actually given
+  sold: number; // Selling Quantity ("ซื้อเอง")
+  freeCost: number; // full cost of what was given, regardless of quota
+  /**
+   * "มูลค่าส่วนเกิน (฿)" — the EXCESS portion's value only, not the row's full
+   * `freeCost`. For an "over" row these differ (confirmed against a real
+   * account: LYS REAGENT had freeCost ฿251,828 but the reference's excess
+   * column showed ฿182,172 = over(34) × unit(freeCost/free) — getting this
+   * wrong by displaying `freeCost` here was a real, shipped bug, caught only
+   * by hand-checking this specific column against the reference rather than
+   * just expected/free/over/ratio). Zero for "within" rows (no excess by
+   * definition). Equal to `freeCost` for noRule/reagent-excluded/
+   * wrongPlatform/additional rows, where `over` is defined as the full
+   * `free` amount (there's no quota to be "within", so the whole thing
+   * counts as excess/unaccounted cost).
+   */
+  excessValue: number;
+  over: number; // free - expected
+  ratio: number | null; // free / expected, null when expected is 0
+  bucket: "over" | "within" | "noRule" | "reagent" | "wrongPlatform" | "additional";
+};
+
+export type EntitlementResult = {
+  platform: PlatformResult;
+  assayTests: { code: string; tests: number; batches: number }[];
+  rows: EntitlementRow[];
+  totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number };
+};
+
+/**
+ * Full per-account entitlement, mirroring `foc-core.js`'s `buildEntitlement`
+ * loop body for a single account. `got` must already be summed across the
+ * account's full history (see `focAccountDetail.ts`'s convention).
+ */
+export function computeEntitlement(
+  got: Map<string, MaterialGiven>,
+  assays: AssayLite[],
+  items: ItemLite[],
+  additionalMats: Set<string>,
+  tpbInput: TpbTableInput,
+): EntitlementResult {
+  const platformInfo = detectPlatform(got);
+  const { candidates } = platformInfo;
+
+  const results658 = candidates.map((sys) => ({ sys, ...evaluate658(sys, got, assays, items, tpbInput) }));
+  // Per-material MAXIMUM across candidate systems, not the sum (the reagent
+  // volume is unsplittable) and not "pick the bigger total" (that silently
+  // dumps the losing system's own items into "no rule" — the AMNAJCHAROEN
+  // HOSPITAL bug `foc-core.js` fixed on 2026-09-29). Ported verbatim.
+  const expected658: Record<string, number> = {};
+  for (const r of results658) {
+    for (const mat in r.expected) expected658[mat] = Math.max(expected658[mat] ?? 0, r.expected[mat]);
+  }
+  const res48 = platformInfo.has4800 ? evaluate4800(got, assays, items) : { tests: {}, batches: {}, expected: {} };
+
+  // Two tracks are additive (4800 reagents have their own material numbers,
+  // so a dual-platform lab genuinely earns both), never maxed together.
+  const expectedAll: Record<string, number> = { ...expected658 };
+  for (const mat in res48.expected) expectedAll[mat] = (expectedAll[mat] ?? 0) + res48.expected[mat];
+
+  const isReagentMat = (mat: string) =>
+    candidates.some((s) => assays.some((a) => a.system === s && a.materialNo === mat)) ||
+    assays.some((a) => a.system === "4800" && a.materialNo === mat);
+  const hasRuleMat = (mat: string) =>
+    candidates.some((s) => items.some((i) => i.system === s && i.materialNo === mat)) ||
+    items.some((i) => i.system === "4800" && i.materialNo === mat && i.weights);
+  const definedAnywhere = (mat: string) =>
+    ["6800", "5800"].some((s) => items.some((i) => i.system === s && i.materialNo === mat)) ||
+    items.some((i) => i.system === "4800" && i.materialNo === mat && i.weights) ||
+    ["6800", "5800", "4800"].some((s) => assays.some((a) => a.system === s && a.materialNo === mat));
+  const wrongPlatformMat = (mat: string) => !hasRuleMat(mat) && !isReagentMat(mat) && definedAnywhere(mat);
+
+  const rows: EntitlementRow[] = [];
+  const totals = { overCost: 0, withinCost: 0, noRuleCost: 0, reagentFreeCost: 0, wrongPlatformCost: 0, additionalCost: 0 };
+
+  const allMats = new Set<string>([...got.keys(), ...Object.keys(expectedAll)]);
+  for (const mat of allMats) {
+    const d = got.get(mat) ?? { sold: 0, foc: 0, bonus: 0, freeCost: 0, productName: mat };
+    const free = d.foc + d.bonus;
+
+    if (isReagentMat(mat)) {
+      totals.reagentFreeCost += d.freeCost;
+      continue; // main reagent given free — cost only, never a quota comparison
+    }
+    if (wrongPlatformMat(mat)) {
+      if (free > 0) {
+        totals.wrongPlatformCost += d.freeCost;
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "wrongPlatform" });
+      }
+      continue;
+    }
+    if (additionalMats.has(mat)) {
+      if (free > 0) {
+        totals.additionalCost += d.freeCost;
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "additional" });
+      }
+      continue;
+    }
+    if (!hasRuleMat(mat)) {
+      if (free > 0) {
+        totals.noRuleCost += d.freeCost;
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "noRule" });
+      }
+      continue;
+    }
+
+    const exp = expectedAll[mat] ?? 0;
+    if (free === 0 && exp === 0) continue;
+    const over = free - exp;
+    const ratio = exp > 0 ? free / exp : null;
+    const item = items.find((i) => i.materialNo === mat && (candidates.includes(i.system as Sys658) || i.system === "4800"));
+    const row: EntitlementRow = {
+      materialNo: mat,
+      productName: d.productName,
+      optional: item?.optional ?? false,
+      expected: exp,
+      focQty: d.foc,
+      bonusQty: d.bonus,
+      free,
+      sold: d.sold,
+      freeCost: d.freeCost,
+      excessValue: over > 0 ? Math.round(over * (free ? d.freeCost / free : 0)) : 0,
+      over,
+      ratio,
+      bucket: over > 0 ? "over" : "within",
+    };
+    rows.push(row);
+    if (over > 0) totals.overCost += row.excessValue;
+    else totals.withinCost += d.freeCost;
+  }
+  totals.overCost = Math.round(totals.overCost);
+
+  // "Main reagent actually sent" summary line — every assay code that had any
+  // Selling-Quantity-derived test volume, across both the 6800/5800 candidate
+  // results and the additive 4800 track. `batches` is 0 for 4800 codes (no
+  // batch concept there) — the UI omits the "(N batches)" suffix in that case.
+  const codesSeen = new Set<string>();
+  for (const r of results658) for (const c of Object.keys(r.tests)) codesSeen.add(c);
+  for (const c of Object.keys(res48.tests)) codesSeen.add(c);
+  const assayTests = [...codesSeen].sort().map((code) => {
+    const r658 = results658.find((r) => r.tests[code] > 0);
+    return { code, tests: r658?.tests[code] ?? res48.tests[code] ?? 0, batches: r658?.batches[code] ?? 0 };
+  });
+
+  return { platform: platformInfo, assayTests, rows, totals };
+}

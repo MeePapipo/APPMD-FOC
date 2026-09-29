@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * Roche ONE (Navify Light) brand tokens — real values extracted from the
+ * @one/design-tokens reference. The private @one packages can't be installed
+ * without a Roche registry token, so we bake the token values in here.
+ */
+:root {
+  --brand: #0b41cd; /* Roche Blue (blue-600) — primary action */
+  --brand-dark: #1942a3; /* blue-700 — hover/active */
+  --brand-tint: #f5f9ff; /* blue-50 — subtle brand surfaces */
+  --ink: #121212; /* gray-900 — primary text */
+  --muted: #706b69; /* gray-500 — secondary text */
+  --line: #ddd9d5; /* gray-100 — borders */
+  --line-strong: #c2bab5; /* gray-200 */
+  --surface: #ffffff;
+  --canvas: #f5f5f2; /* gray-50 — warm off-white page bg */
+  --positive: #00874a; /* green-500 */
+  --positive-tint: #e8f5ee;
+  --warning: #9b5400; /* yellow-500 */
+  --warning-tint: #fdf3e6;
+  --negative: #a30014; /* red-500 */
+  --negative-tint: #fbeaec;
+
+  /*
+   * Product-category washes. An order mixes six kinds of line and reps scan
+   * for one kind at a time, so each section gets its own hue rather than
+   * relying on the heading alone.
+   *
+   * Drawn from the Navify Light 100-step tints (blue/green/yellow/orange/
+   * purple) and lightened where the raw token was too saturated to sit under
+   * dense tabular text. Hues are picked for separation — no two adjacent on
+   * the wheel — and all stay light enough to keep --ink at AAA contrast.
+   * The page canvas (#f5f5f2) is deliberately not reused by any of them.
+   */
+  --cat-reagent: #e8f1fd; /* blue — the reagents being sold (revenue side) */
+  --cat-qc: #e7f3ea; /* green-100 — quality controls */
+  --cat-common: #fff9e8; /* yellow-100 — common additional */
+  --cat-additional: #fff1e0; /* orange-100 — additional, incl. optional */
+  --cat-choice: #f6eaff; /* purple — chosen by a human, not by the formula */
+
+  /* Matching accent rules, for the left border of each section. */
+  --cat-reagent-edge: #0b41cd;
+  --cat-qc-edge: #00874a;
+  --cat-common-edge: #9b5400;
+  --cat-additional-edge: #c25e00;
+  --cat-choice-edge: #7b2fb5;
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-tint: var(--brand-tint);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-surface: var(--surface);
+  --color-canvas: var(--canvas);
+  --color-positive: var(--positive);
+  --color-positive-tint: var(--positive-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-negative: var(--negative);
+  --color-negative-tint: var(--negative-tint);
+  --color-cat-reagent: var(--cat-reagent);
+  --color-cat-qc: var(--cat-qc);
+  --color-cat-common: var(--cat-common);
+  --color-cat-additional: var(--cat-additional);
+  --color-cat-choice: var(--cat-choice);
+  --color-cat-reagent-edge: var(--cat-reagent-edge);
+  --color-cat-qc-edge: var(--cat-qc-edge);
+  --color-cat-common-edge: var(--cat-common-edge);
+  --color-cat-additional-edge: var(--cat-additional-edge);
+  --color-cat-choice-edge: var(--cat-choice-edge);
+  --font-sans:
+    "Roche Sans", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial,
+    sans-serif;
+}
+
+html {
+  height: 100%;
+}
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Number inputs without spinners for a cleaner data grid */
+input.no-spin::-webkit-outer-spin-button,
+input.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input.no-spin {
+  -moz-appearance: textfield;
+}
