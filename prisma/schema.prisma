@@ -23,6 +23,7 @@ enum Team {
   SOUTH
   PRIVATE
   BUSINESS_PARTNER
+  MD // internal MD team (the admin account); hidden from team rollups, not offered at registration
 }
 
 enum System {
@@ -154,6 +155,66 @@ model TpbSettings {
   method    String? // free-text methodology note, copied from tpb.json's "method"
   asOf      DateTime?
   updatedAt DateTime @updatedAt
+
+  // Per-account TPB (see InstrumentUsageMonth): an account's own TPB is used only
+  // with at least `accountMinRuns` runs in the last `accountWindowMonths`, and is
+  // never taken below `accountFloorRatio` x the national TPB.
+  accountFloorRatio   Float @default(0.5)
+  accountMinRuns      Int   @default(8)
+  accountWindowMonths Int   @default(4)
+}
+
+/// Which product lines (Tableau PL3) the FOC import keeps. The raw export covers
+/// the whole company; MD's dashboard is Molecular only. One row.
+model FocImportSettings {
+  id                  String   @id @default("singleton")
+  allowedProductLines String[] @default(["MOLECULAR LAB"])
+  updatedAt           DateTime @updatedAt
+}
+
+/// When does a give-away count as "over quota in a meaningful way". One row.
+model AlertSettings {
+  id           String   @id @default("singleton")
+  overPct6800  Float    @default(15) // % over the entitled qty, cobas 6800/8800 accounts
+  overPct5800  Float    @default(20) // % over the entitled qty, cobas 5800 accounts
+  minOverUnits Float    @default(1) // and at least this many units over
+  updatedAt    DateTime @updatedAt
+}
+
+/// One physical analyser. Keyed by serial + system class because a serial can
+/// exist on two classes at different accounts (1700 = c6800 and c5800). Linked
+/// to the account it sits at; a move is an edit of accountId.
+model Instrument {
+  id          String   @id @default(cuid())
+  serial      String
+  systemClass String // as eLP reports it: c6800 | c8800 | c5800
+  labName     String? // English lab name from the eLP Laboratory table
+  accountId   String?
+  account     Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  note        String?
+
+  usage InstrumentUsageMonth[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([serial, systemClass])
+  @@index([accountId])
+}
+
+/// Monthly eLP usage per instrument x assay. runs = (run, test) pairs, the same
+/// definition the national TPB uses; samples = that assay's samples.
+model InstrumentUsageMonth {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  month        String // "2026-09"
+  assayCode    String
+  runs         Int
+  samples      Int
+
+  @@unique([instrumentId, month, assayCode])
+  @@index([month])
 }
 
 /// Real tests-per-batch per (system, assay code), refreshed periodically from
@@ -187,6 +248,7 @@ model Account {
   submissions      Submission[]
   annualForecasts  AnnualForecast[]
   quotas           Quota[]
+  instruments      Instrument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -231,6 +293,9 @@ model Submission {
   createdByEmail String
   year           Int // explicit, used for quota-year bucketing (not derived from createdAt at query time)
   deductStock    Boolean  @default(false)
+  // Which TPB each assay was computed with (value, source, national value), so a
+  // saved order stays explainable after the TPB data moves. Null on older orders.
+  tpbBasis       Json?
 
   revenue Decimal @db.Decimal(14, 2)
   focValue Decimal @db.Decimal(14, 2)
