@@ -2,6 +2,17 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Samples per run as total samples over total runs — the estimator whose
+ * `tests / tpb` reproduces the runs actually observed. A plain mean of monthly
+ * ratios lets a thin month weigh as much as a busy one (MTB/MALARIA on 6800
+ * were ~20% off the pooled figure). Null when either total is missing/zero.
+ */
+export function pooledTpb(totalRuns: number | null | undefined, totalSamples: number | null | undefined): number | null {
+  if (!totalRuns || !totalSamples || totalRuns <= 0 || totalSamples <= 0) return null;
+  return Math.round((totalSamples / totalRuns) * 100) / 100;
+}
+
 export const TPB_SYSTEMS = ["S6800", "S5800"] as const;
 
 export const tpbEntryUpsertSchema = z.object({

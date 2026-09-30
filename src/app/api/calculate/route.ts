@@ -1,6 +1,8 @@
 import { getSessionUser } from "@/lib/session";
 import { computeForTests } from "@/lib/calc/service";
 import { calculateSchema } from "@/lib/calc/schema";
+import { prisma } from "@/lib/prisma";
+import { loadAllowance } from "@/lib/dashboard/allowance";
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
@@ -16,14 +18,36 @@ export async function POST(request: Request) {
   // parsing the body as JSON looking for `.error`, turning one failure into two.
   let computed;
   try {
-    computed = await computeForTests(parsed.data.testsBySys, {
-      optionalTicked: parsed.data.optionalTicked,
-    });
+    computed = await computeForTests(
+      parsed.data.testsBySys,
+      { optionalTicked: parsed.data.optionalTicked },
+      parsed.data.accountId,
+    );
   } catch (cause) {
     console.error("calculate failed", cause);
     return Response.json({ error: "Calculation failed. Please try again." }, { status: 500 });
   }
-  const { result, items } = computed;
+  const { result, items, assays, tpbInput, tpbNotices } = computed;
+
+  // Remaining give-away allowance for the chosen account. A failure here must not
+  // take the calculation down with it: the order is still quotable without it.
+  let allowance = null;
+  if (parsed.data.accountId) {
+    try {
+      const account = await prisma.account.findUnique({ where: { id: parsed.data.accountId }, select: { accountNumber: true } });
+      if (account) {
+        allowance = await loadAllowance({
+          accountNumber: account.accountNumber,
+          reagents: result.reagents.map((r) => ({ materialNo: r.materialNo, description: r.description, qty: r.qty })),
+          assays,
+          items,
+          tpbInput,
+        });
+      }
+    } catch (cause) {
+      console.error("allowance failed", cause);
+    }
+  }
 
   const lines = items
     .map((item, index) => ({ item, row: result.rows[index] }))
@@ -49,5 +73,7 @@ export async function POST(request: Request) {
     revenue: result.revenue,
     focValue: result.focValue,
     focPct: result.focPct,
+    tpbNotices,
+    allowance,
   });
 }

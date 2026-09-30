@@ -32,12 +32,12 @@ export async function POST(request: Request) {
 
   let computed;
   try {
-    computed = await computeForTests(testsBySys, { optionalTicked });
+    computed = await computeForTests(testsBySys, { optionalTicked }, account.id);
   } catch (cause) {
     console.error("submission compute failed", cause);
     return Response.json({ error: "Calculation failed. Please try again." }, { status: 500 });
   }
-  const { result, items } = computed;
+  const { result, items, tpbBasis } = computed;
 
   // Quantities are always recomputed server-side; the client may only supply
   // the two human inputs (stock on hand and the manual adjustment), which are
@@ -144,6 +144,7 @@ export async function POST(request: Request) {
       createdById: user.id,
       createdByEmail: user.email ?? "",
       year: new Date().getFullYear(),
+      tpbBasis: tpbBasis ?? undefined,
       revenue,
       focValue,
       focPct: revenue ? focValue / revenue : 0,

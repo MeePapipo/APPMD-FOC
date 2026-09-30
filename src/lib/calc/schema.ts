@@ -57,6 +57,8 @@ export const adjustmentsSchema = z
   });
 
 export const calculateSchema = z.object({
+  /** With an account the run counts use that account's own TPB; without one, the national TPB. */
+  accountId: z.string().min(1).max(64).optional(),
   testsBySys: testsBySysSchema,
   optionalTicked: optionalTickedSchema.optional(),
 });

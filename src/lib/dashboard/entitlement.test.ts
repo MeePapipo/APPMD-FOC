@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeEntitlement, detectPlatform, type MaterialGiven } from "./entitlement";
+import { alertPctFor, computeEntitlement, detectPlatform, isSignificantOver, type MaterialGiven } from "./entitlement";
 import type { AssayLite, ItemLite } from "@/lib/calc/types";
 import type { TpbTableInput } from "@/lib/calc/tpb";
 
@@ -215,5 +215,30 @@ describe("computeEntitlement", () => {
     const result = computeEntitlement(g, assays, itemsBoth, new Set(), tpbInput);
     expect(result.totals.wrongPlatformCost).toBe(50);
     expect(result.rows.find((r) => r.materialNo === "CONS-5800-ONLY")?.bucket).toBe("wrongPlatform");
+  });
+});
+
+describe("alert thresholds", () => {
+  const A = { overPct6800: 15, overPct5800: 20, minOverUnits: 1 };
+
+  it("picks the platform's percentage; both = stricter, unknown = looser", () => {
+    expect(alertPctFor("6800", A)).toBe(15);
+    expect(alertPctFor("4800", A)).toBe(15);
+    expect(alertPctFor("5800", A)).toBe(20);
+    expect(alertPctFor("both", A)).toBe(15);
+    expect(alertPctFor("unknown", A)).toBe(20);
+  });
+
+  it("needs both the unit floor and the percentage", () => {
+    expect(isSignificantOver(1, 10, 15, 1)).toBe(false); // 10% over: a unit, but under 15%
+    expect(isSignificantOver(2, 10, 15, 1)).toBe(true); // 20% over
+    expect(isSignificantOver(0.5, 2, 15, 1)).toBe(false); // 25% but under a whole unit
+    expect(isSignificantOver(3, 20, 15, 1)).toBe(false); // exactly 15% is not beyond 15%
+    expect(isSignificantOver(4, 20, 15, 1)).toBe(true);
+  });
+
+  it("any give-away with no entitlement at all counts once it reaches the unit floor", () => {
+    expect(isSignificantOver(1, 0, 15, 1)).toBe(true);
+    expect(isSignificantOver(0, 0, 15, 1)).toBe(false);
   });
 });

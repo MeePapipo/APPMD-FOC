@@ -1,6 +1,6 @@
 import { Workbook } from "exceljs";
 import { requireApiAdmin } from "@/lib/api-auth";
-import { applyTpbChanges, tpbPatchSchema, TPB_SYSTEMS } from "@/lib/admin/tpb";
+import { applyTpbChanges, pooledTpb, tpbPatchSchema, TPB_SYSTEMS } from "@/lib/admin/tpb";
 
 /**
  * Accepts the "FOC_TPB_SamplesPerBatch_by_Assay" style export directly —
@@ -90,15 +90,20 @@ export async function POST(request: Request) {
       continue;
     }
 
+    const totalRuns = record.totalRuns !== undefined && record.totalRuns !== "" ? Number(record.totalRuns) : null;
+    const totalSamples = record.totalSamples !== undefined && record.totalSamples !== "" ? Number(record.totalSamples) : null;
+
     rawEntries.push({
       action: "upsert",
       system,
       code,
-      tpb,
+      // Pooled samples/runs when the file carries both totals; the file's own
+      // TPB column (a mean of monthly ratios) is only the fallback.
+      tpb: pooledTpb(totalRuns, totalSamples) ?? tpb,
       confidence: String(record.confidence ?? "normal").trim().toLowerCase() === "low" ? "low" : "normal",
       monthsWithData: record.monthsWithData ? String(record.monthsWithData) : null,
-      totalRuns: record.totalRuns !== undefined && record.totalRuns !== "" ? Number(record.totalRuns) : null,
-      totalSamples: record.totalSamples !== undefined && record.totalSamples !== "" ? Number(record.totalSamples) : null,
+      totalRuns,
+      totalSamples,
       notes: record.notes ? String(record.notes) : null,
     });
   }

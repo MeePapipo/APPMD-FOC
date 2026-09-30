@@ -257,13 +257,44 @@ export type EntitlementRow = {
   over: number; // free - expected
   ratio: number | null; // free / expected, null when expected is 0
   bucket: "over" | "within" | "noRule" | "reagent" | "wrongPlatform" | "additional";
+  /**
+   * Over quota "in a meaningful way": `over` reaches `minOverUnits` AND the
+   * excess is beyond the platform's percentage of the entitlement (or there is
+   * no entitlement at all). Plain `over > 0` flags every rounding crumb.
+   */
+  significant: boolean;
 };
+
+/** Admin-tunable thresholds for `significant` (AlertSettings). */
+export type AlertThresholds = { overPct6800: number; overPct5800: number; minOverUnits: number };
+export const DEFAULT_ALERT: AlertThresholds = { overPct6800: 15, overPct5800: 20, minOverUnits: 1 };
+
+/**
+ * Percentage that applies to an account's platform. A dual-platform account
+ * gets the stricter figure; an unidentifiable one the looser, matching
+ * detectPlatform's own "don't raise flags we can't back up" stance.
+ */
+export function alertPctFor(platform: string, a: AlertThresholds): number {
+  if (platform === "5800") return a.overPct5800;
+  if (platform === "both") return Math.min(a.overPct6800, a.overPct5800);
+  if (platform === "unknown") return Math.max(a.overPct6800, a.overPct5800);
+  return a.overPct6800; // 6800 and 4800
+}
+
+export function isSignificantOver(over: number, expected: number, pct: number, minOverUnits: number): boolean {
+  if (over < minOverUnits) return false;
+  return expected <= 0 || (over / expected) * 100 > pct;
+}
 
 export type EntitlementResult = {
   platform: PlatformResult;
   assayTests: { code: string; tests: number; batches: number }[];
   rows: EntitlementRow[];
-  totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number };
+  totals: {
+    overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number;
+    significantCount: number; // rows over quota beyond the alert thresholds
+    significantCost: number; // their excess value
+  };
 };
 
 /**
@@ -277,6 +308,7 @@ export function computeEntitlement(
   items: ItemLite[],
   additionalMats: Set<string>,
   tpbInput: TpbTableInput,
+  alert: AlertThresholds = DEFAULT_ALERT,
 ): EntitlementResult {
   const platformInfo = detectPlatform(got);
   const { candidates } = platformInfo;
@@ -310,7 +342,8 @@ export function computeEntitlement(
   const wrongPlatformMat = (mat: string) => !hasRuleMat(mat) && !isReagentMat(mat) && definedAnywhere(mat);
 
   const rows: EntitlementRow[] = [];
-  const totals = { overCost: 0, withinCost: 0, noRuleCost: 0, reagentFreeCost: 0, wrongPlatformCost: 0, additionalCost: 0 };
+  const totals = { overCost: 0, withinCost: 0, noRuleCost: 0, reagentFreeCost: 0, wrongPlatformCost: 0, additionalCost: 0, significantCount: 0, significantCost: 0 };
+  const alertPct = alertPctFor(platformInfo.platform, alert);
 
   const allMats = new Set<string>([...got.keys(), ...Object.keys(expectedAll)]);
   for (const mat of allMats) {
@@ -324,21 +357,21 @@ export function computeEntitlement(
     if (wrongPlatformMat(mat)) {
       if (free > 0) {
         totals.wrongPlatformCost += d.freeCost;
-        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "wrongPlatform" });
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "wrongPlatform", significant: false });
       }
       continue;
     }
     if (additionalMats.has(mat)) {
       if (free > 0) {
         totals.additionalCost += d.freeCost;
-        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "additional" });
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "additional", significant: false });
       }
       continue;
     }
     if (!hasRuleMat(mat)) {
       if (free > 0) {
         totals.noRuleCost += d.freeCost;
-        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "noRule" });
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "noRule", significant: false });
       }
       continue;
     }
@@ -362,12 +395,18 @@ export function computeEntitlement(
       over,
       ratio,
       bucket: over > 0 ? "over" : "within",
+      significant: over > 0 && isSignificantOver(over, exp, alertPct, alert.minOverUnits),
     };
     rows.push(row);
     if (over > 0) totals.overCost += row.excessValue;
     else totals.withinCost += d.freeCost;
+    if (row.significant) {
+      totals.significantCount += 1;
+      totals.significantCost += row.excessValue;
+    }
   }
   totals.overCost = Math.round(totals.overCost);
+  totals.significantCost = Math.round(totals.significantCost);
 
   // "Main reagent actually sent" summary line — every assay code that had any
   // Selling-Quantity-derived test volume, across both the 6800/5800 candidate

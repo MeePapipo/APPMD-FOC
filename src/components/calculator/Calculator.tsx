@@ -6,11 +6,12 @@ import { Plus, Trash2 } from "lucide-react";
 import type { AccountDTO, AdditionalFocDTO, AssayDTO } from "@/lib/dto";
 import type { SysCode, TestsBySystem } from "@/lib/calc/types";
 import { computeReagents } from "@/lib/calc/reagents";
-import { needsComment, type Adjustment, type AdjustmentMap } from "@/lib/calc/adjust";
+import { deltaForTargetQty, needsComment, type Adjustment, type AdjustmentMap } from "@/lib/calc/adjust";
 import { AccountPicker } from "./AccountPicker";
 import { Button } from "@/components/ui";
 import { selectPreview, type ManualFocLine, type PreviewResult } from "@/lib/calc/preview";
 import { CalculationPreview, OrderTotals } from "./CalculationPreview";
+import { AllowancePanel } from "./AllowancePanel";
 import { ReagentQuantities } from "./ReagentQuantities";
 import { AdditionalFocPicker, type ManualQuantities } from "./AdditionalFocPicker";
 import { CategorySection } from "@/components/CategorySection";
@@ -25,7 +26,7 @@ interface AssayLine {
   id: number;
   system: SysCode;
   code: string;
-  tests: string;
+  boxes: string;
 }
 
 export function Calculator({ accounts, assays, additionalFoc }: {
@@ -35,7 +36,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 }) {
   const router = useRouter();
   const [account, setAccount] = useState<AccountDTO | null>(null);
-  const [lines, setLines] = useState<AssayLine[]>([{ id: 0, system: "6800", code: "", tests: "" }]);
+  const [lines, setLines] = useState<AssayLine[]>([{ id: 0, system: "6800", code: "", boxes: "" }]);
   const nextLineId = useRef(1);
   const requestInFlight = useRef(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -54,14 +55,20 @@ export function Calculator({ accounts, assays, additionalFoc }: {
   const errorRef = useRef<HTMLParagraphElement>(null);
   const busy = loading || submitting;
 
-  const selectedLines = lines.filter((line) => line.code || line.tests);
+  // The rep orders in boxes; the engine works in tests, so each line's tests
+  // are boxes x the assay's pack size (what the box is labelled as holding).
+  const assayOf = (line: AssayLine) =>
+    assays.find((assay) => assay.system === line.system && assay.code === line.code);
+  const testsOf = (line: AssayLine) => Number(line.boxes) * (assayOf(line)?.packSize ?? 0);
+  const selectedLines = lines.filter((line) => line.code || line.boxes);
   const validLine = (line: AssayLine) =>
-    assays.some((assay) => assay.system === line.system && assay.code === line.code) &&
-    Number.isSafeInteger(Number(line.tests)) && Number(line.tests) > 0;
+    !!assayOf(line) &&
+    Number.isSafeInteger(Number(line.boxes)) && Number(line.boxes) > 0 &&
+    Number.isSafeInteger(testsOf(line));
   const testsBySys: TestsBySystem = {};
   for (const line of selectedLines.filter(validLine)) {
     const tests = testsBySys[line.system] ??= {};
-    tests[line.code] = (tests[line.code] ?? 0) + Number(line.tests);
+    tests[line.code] = (tests[line.code] ?? 0) + testsOf(line);
   }
   const validOrder = selectedLines.length > 0 && selectedLines.every(validLine) &&
     Object.values(testsBySys).every((tests) => Object.values(tests ?? {}).every(Number.isSafeInteger));
@@ -88,6 +95,9 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 
   // Computed once and shared: the item tables and the closing totals are now
   // rendered in different places on the page and must not disagree.
+  const warningNotices = (preview?.tpbNotices ?? []).filter((n) => n.kind !== "account");
+  const accountNotices = (preview?.tpbNotices ?? []).filter((n) => n.kind === "account");
+
   const selected = preview ? selectPreview(preview, optionalTicked, adjustments, manualLines) : null;
 
   function invalidatePreview() {
@@ -118,12 +128,12 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 
   function addLine() {
     if (requestInFlight.current) return;
-    const line: AssayLine = { id: nextLineId.current++, system: lines.at(-1)?.system ?? "6800", code: "", tests: "" };
+    const line: AssayLine = { id: nextLineId.current++, system: lines.at(-1)?.system ?? "6800", code: "", boxes: "" };
     setLines((previous) => [...previous, line]);
     invalidatePreview();
   }
 
-  function updateLine(id: number, update: Partial<Pick<AssayLine, "system" | "code" | "tests">>) {
+  function updateLine(id: number, update: Partial<Pick<AssayLine, "system" | "code" | "boxes">>) {
     if (requestInFlight.current) return;
     setLines((previous) => previous.map((line) => line.id === id ? { ...line, ...update } : line));
     invalidatePreview();
@@ -149,7 +159,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
       const response = await fetch("/api/calculate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ testsBySys, optionalTicked }),
+        body: JSON.stringify({ accountId: account.id, testsBySys, optionalTicked }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -230,7 +240,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                         <select
                           id={`system-${line.id}`}
                           value={line.system}
-                          onChange={(event) => updateLine(line.id, { system: event.target.value as SysCode, code: "", tests: "" })}
+                          onChange={(event) => updateLine(line.id, { system: event.target.value as SysCode, code: "", boxes: "" })}
                           className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:outline-brand"
                         >
                           {(Object.keys(SYSTEM_LABELS) as SysCode[]).map((system) => (
@@ -243,8 +253,8 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                         <select
                           id={`assay-${line.id}`}
                           value={line.code}
-                          required={!!line.tests}
-                          onChange={(event) => updateLine(line.id, { code: event.target.value, tests: "" })}
+                          required={!!line.boxes}
+                          onChange={(event) => updateLine(line.id, { code: event.target.value, boxes: "" })}
                           className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:outline-brand"
                         >
                           <option value="">Select reagent...</option>
@@ -255,19 +265,24 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                         {assay && <p className="mt-1 break-words text-xs text-muted">{assay.packSize} tests/box · Material {assay.materialNo}</p>}
                       </div>
                       <div className="min-w-0">
-                        <label htmlFor={`tests-${line.id}`} className="mb-1 block text-xs font-medium text-muted">Number of tests</label>
+                        <label htmlFor={`boxes-${line.id}`} className="mb-1 block text-xs font-medium text-muted">Number of boxes</label>
                         <input
-                          id={`tests-${line.id}`}
+                          id={`boxes-${line.id}`}
                           type="number"
                           min={1}
                           max={Number.MAX_SAFE_INTEGER}
                           step={1}
                           required={!!line.code}
                           disabled={!line.code}
-                          value={line.tests}
-                          onChange={(event) => updateLine(line.id, { tests: event.target.value })}
+                          value={line.boxes}
+                          onChange={(event) => updateLine(line.id, { boxes: event.target.value })}
                           className="no-spin w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm tabular-nums focus:outline-brand disabled:opacity-50"
                         />
+                        {assay && validLine(line) && (
+                          <p aria-live="polite" className="mt-1 text-xs tabular-nums text-muted">
+                            = {testsOf(line).toLocaleString("en-US")} tests
+                          </p>
+                        )}
                       </div>
                     </div>
                     <Button
@@ -296,6 +311,26 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 
       {preview && selected && (
         <section aria-label="Order review" className="border-t border-line pt-5">
+          {!stale && warningNotices.length > 0 && (
+            <div role="note" className="mb-4 rounded-lg border border-warning/20 bg-warning-tint px-3 py-2 text-sm text-warning">
+              <p className="font-medium">Check the run estimates</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {warningNotices.map((notice) => (
+                  <li key={`${notice.system}-${notice.code}`}>{notice.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!stale && accountNotices.length > 0 && (
+            <div role="note" className="mb-4 rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-muted">
+              <p className="font-medium text-ink">Run estimates for this account</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {accountNotices.map((notice) => (
+                  <li key={`${notice.system}-${notice.code}`}>{notice.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <CalculationPreview
             selected={selected}
             stale={stale}
@@ -305,6 +340,16 @@ export function Calculator({ accounts, assays, additionalFoc }: {
             adjustments={adjustments}
             onAdjust={adjustLine}
           />
+          {preview.allowance && (
+            <div className="mt-6">
+              <AllowancePanel
+                allowance={preview.allowance}
+                lines={[...selected.required, ...selected.selectedOptional]}
+                disabled={stale || busy}
+                onCap={(line, target) => adjustLine(line.materialNo, { adjust: deltaForTargetQty(target, line.afterStockQty) })}
+              />
+            </div>
+          )}
         </section>
       )}
 

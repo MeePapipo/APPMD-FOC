@@ -1,4 +1,5 @@
 import type { ReagentResult } from "./types";
+import type { TpbNotice } from "./tpbNotices";
 import { applyAdjustment, type AdjustedQuantities, type AdjustmentMap } from "./adjust";
 
 export interface PreviewLine {
@@ -16,12 +17,27 @@ export interface PreviewLine {
   value: number;
 }
 
+/**
+ * How much of an account's cumulative give-away allowance is left, per item.
+ * `entitled` already includes the order being previewed; `given` is what
+ * Tableau says was handed out up to `asOf` (the last import).
+ */
+export interface AllowanceInfo {
+  asOf: string | null; // "2026-08", the latest month in the FOC import
+  hasHistory: boolean; // false when the account has no rows in the import at all
+  lines: Record<string, { given: number; entitled: number; remaining: number }>;
+}
+
 export interface PreviewResult {
   reagents: ReagentResult[];
   lines: PreviewLine[];
   revenue: number;
   focValue: number;
   focPct: number;
+  /** Assays whose run count rests on weak TPB evidence; absent on older saved previews. */
+  tpbNotices?: TpbNotice[];
+  /** Present when the order was previewed for an account. */
+  allowance?: AllowanceInfo | null;
 }
 
 export function previewGroup(line: Pick<PreviewLine, "usageType" | "category">) {
