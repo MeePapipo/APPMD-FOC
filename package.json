@@ -14,6 +14,8 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "import-foc-excel": "tsx scripts/import-foc-excel.ts",
     "import-additional-foc": "tsx scripts/import-additional-foc.ts",
+    "copy-reference-data": "tsx scripts/copy-reference-data.ts",
+    "apply-migrations-neon": "tsx scripts/apply-migrations-neon.ts",
     "verify-export": "tsx scripts/verify-export.mts",
     "smoke": "tsx scripts/smoke.mts",
     "db:dev": "node scripts/pg-dev.mjs",
@@ -36,12 +38,15 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@playwright/test": "^1.63.0",
+    "@prisma/adapter-neon": "^7.10.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.43",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.2",
     "dotenv": "^17.4.2",
     "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9",
@@ -50,6 +55,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "ws": "^8.22.0"
   }
 }
