@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export function SignInButtons({
   devAuth,
@@ -70,9 +71,8 @@ export function SignInButtons({
           placeholder="you@roche.com"
           className="rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand focus:outline-none"
         />
-        <input
+        <PasswordInput
           id="signin-password"
-          type="password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}

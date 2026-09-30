@@ -5,7 +5,7 @@ import { Badge, Button, CardRow } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { ROW_HOVER } from "@/lib/hoverStyles";
 
-type Team = "NORTH" | "SOUTH" | "PRIVATE" | "BUSINESS_PARTNER";
+type Team = "NORTH" | "SOUTH" | "PRIVATE" | "BUSINESS_PARTNER" | "MD";
 type Role = "USER" | "ADMIN";
 
 type AdminUser = {
@@ -32,6 +32,7 @@ const TEAM_LABELS: Record<Team, string> = {
   SOUTH: "South Team",
   PRIVATE: "Private Team",
   BUSINESS_PARTNER: "Business Partner Team",
+  MD: "MD Team",
 };
 
 export function AdminUsersTable({

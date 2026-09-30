@@ -7,6 +7,7 @@ const TEAM_LABELS: Record<string, string> = {
   SOUTH: "South Team",
   PRIVATE: "Private Team",
   BUSINESS_PARTNER: "Business Partner Team",
+  MD: "MD Team",
   UNASSIGNED: "Unassigned",
 };
 
@@ -18,6 +19,8 @@ function teamRollup(users: { team: string | null; lastLoginAt: Date | null }[]) 
   const recentCutoffMs = Date.now() - THIRTY_DAYS_MS;
   const rollup = new Map<string, { total: number; activeRecently: number }>();
   for (const u of users) {
+    // MD is the admin's own label, not a sales team — keep it out of the rollup.
+    if (u.team === "MD") continue;
     const key = u.team ?? "UNASSIGNED";
     const bucket = rollup.get(key) ?? { total: 0, activeRecently: 0 };
     bucket.total += 1;

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui";
 import { PASSWORD_HINT } from "@/lib/passwordPolicy";
+import { PasswordInput } from "@/components/PasswordInput";
 
 const TEAM_OPTIONS = [
   { value: "NORTH", label: "North Team" },
@@ -122,9 +123,8 @@ export function RegisterForm() {
         <label htmlFor="register-password" className="mb-1 block text-xs font-medium text-muted">
           Password
         </label>
-        <input
+        <PasswordInput
           id="register-password"
-          type="password"
           required
           minLength={8}
           pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
@@ -140,9 +140,8 @@ export function RegisterForm() {
         <label htmlFor="register-confirm" className="mb-1 block text-xs font-medium text-muted">
           Confirm password
         </label>
-        <input
+        <PasswordInput
           id="register-confirm"
-          type="password"
           required
           minLength={8}
           value={confirm}

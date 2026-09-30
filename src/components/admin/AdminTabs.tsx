@@ -8,7 +8,9 @@ import { NAV_HOVER } from "@/lib/hoverStyles";
 const TABS = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/master", label: "Master data" },
+  { href: "/admin/accounts", label: "Accounts" },
   { href: "/admin/tpb", label: "TPB" },
+  { href: "/admin/settings", label: "Settings" },
 ];
 
 export function AdminTabs() {
