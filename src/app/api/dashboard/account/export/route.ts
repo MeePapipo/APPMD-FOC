@@ -1,11 +1,12 @@
 import { requireApiUser } from "@/lib/api-auth";
 import { loadAccountDetail } from "@/lib/dashboard/accountDetailLoader";
+import { parseItemGroups } from "@/lib/dashboard/filters";
 import { buildAccountMatrix, type Measure } from "@/lib/dashboard/focAccountMatrix";
 import { accountMatrixCsv } from "@/lib/dashboard/focExports";
 import { MissingThaiFontError } from "@/lib/export/pdf";
 import { buildAccountMatrixPdf } from "@/lib/export/accountMatrixPdf";
 
-/** One account's product x month matrix as CSV or PDF: ?name=&year=&format=csv|pdf&measure=qty|cost. */
+/** One account's product x month matrix as CSV or PDF: ?name=&year=&ig=&format=csv|pdf&measure=qty|cost. */
 export async function GET(request: Request) {
   const guard = await requireApiUser();
   if (guard instanceof Response) return guard;
@@ -17,11 +18,11 @@ export async function GET(request: Request) {
   if (format !== "csv" && format !== "pdf") return Response.json({ error: "format must be csv or pdf" }, { status: 400 });
   const measure: Measure = params.get("measure") === "cost" ? "cost" : "qty";
 
-  const detail = await loadAccountDetail(name);
+  const detail = await loadAccountDetail(name, parseItemGroups(params.get("ig") ?? undefined));
   if (!detail) return Response.json({ error: "Account not found" }, { status: 404 });
 
   const askedYear = Number(params.get("year"));
-  const year = Number.isInteger(askedYear) && askedYear > 0 ? askedYear : Math.max(...detail.rows.map((r) => r.year));
+  const year = Number.isInteger(askedYear) && askedYear > 0 ? askedYear : detail.years[0];
   const matrix = buildAccountMatrix(detail.rows, year);
   const account = { name, number: detail.accountNumber, team: detail.team, rep: detail.rep };
   // ASCII only: the account name can be Thai, which a header cannot carry.

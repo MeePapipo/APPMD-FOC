@@ -1,130 +1,270 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Download } from "lucide-react";
-import { Badge } from "@/components/ui";
+import { useCallback, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, Download } from "lucide-react";
 import { DownloadButton } from "@/components/DownloadButton";
 import { cn } from "@/lib/cn";
 import { ROW_HOVER } from "@/lib/hoverStyles";
 import type { Measure } from "@/lib/dashboard/focAccountMatrix";
+import { AccountDrawer } from "./AccountDrawer";
 import { AccountDrilldown } from "./AccountDrilldown";
-import { AccountMatrixPanel } from "./AccountMatrixPanel";
+import {
+  ACCOUNT_COLUMNS,
+  ACCOUNT_NAME_COLUMN,
+  FocOnlyCell,
+  QuotaCell,
+  Sparkline,
+  compareValues,
+  money,
+  splitName,
+  type AccountRow,
+} from "./accountColumns";
 import { RatioBadge } from "./RatioBadge";
 
-export type AccountListRow = {
-  accountName: string;
-  revenue: number;
-  totalCost: number;
-  ratio: number;
-  overCount: number; // items over quota beyond the alert thresholds (cumulative)
-  overCost: number; // their excess value
-};
+export type { AccountRow } from "./accountColumns";
 
-const money = (n: number) => Math.round(n).toLocaleString();
+const PAGE = 100;
 
-/** "PICHIT HOSPITAL  (0052027798)" -> name and number, for a two-line header. */
-function splitName(full: string): { label: string; number: string | null } {
-  const m = full.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
-  return m ? { label: m[1], number: m[2] } : { label: full, number: null };
+type Sort = { key: string; desc: boolean };
+const DEFAULT_SORT: Sort = { key: "quota", desc: true }; // flagged first by net excess, then cost
+
+/** Keep `acct` in the address bar without adding history entries. */
+function syncUrl(name: string | null) {
+  const url = new URL(window.location.href);
+  if (name) url.searchParams.set("acct", name);
+  else url.searchParams.delete("acct");
+  window.history.replaceState(window.history.state, "", url);
+}
+
+/** After the drawer closes, hand focus back to the (visible) row that opened it. */
+function focusRow(name: string) {
+  requestAnimationFrame(() => {
+    const els = [...document.querySelectorAll<HTMLElement>("[data-acct-row]")].filter((el) => el.dataset.acctRow === name && el.offsetParent !== null);
+    els[0]?.focus();
+  });
 }
 
 /**
- * Accordion of accounts (already filtered and sorted by the server: over-quota
- * excess first, then total cost). Opening a row mounts its matrix, which
- * fetches on mount; closing unmounts it.
+ * Master-detail list of accounts: a compact sortable table (cards on phones),
+ * one line per account, and a slide-over drawer with the product x month
+ * matrix. The server hands over every account in scope; sorting, the text
+ * filter and "show more" are client-side.
  */
 export function AccountsView({
   rows,
   year,
   measure,
   exportQuery,
-  openByDefault,
+  initialAcct,
+  itemGroups,
 }: {
-  rows: AccountListRow[];
+  rows: AccountRow[];
   year: number;
   measure: Measure;
   /** The page's filter params, forwarded to the all-accounts CSV. */
   exportQuery: string;
-  openByDefault: boolean;
+  /** `acct` search param: the account whose drawer opens on load. */
+  initialAcct: string | null;
+  /** `ig` search param, "" = default Item Groups. */
+  itemGroups: string;
 }) {
-  const [open, setOpen] = useState<Set<string>>(() => new Set(openByDefault ? rows.slice(0, 1).map((r) => r.accountName) : []));
+  const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
+  const [filter, setFilter] = useState("");
+  const [shown, setShown] = useState(PAGE);
+  const [selected, setSelected] = useState<string | null>(() => (initialAcct && rows.some((r) => r.accountName === initialAcct) ? initialAcct : null));
   const [detail, setDetail] = useState<string | null>(null);
 
-  function toggle(name: string) {
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
+  const sorted = useMemo(() => {
+    const col = sort.key === "accountName" ? ACCOUNT_NAME_COLUMN : ACCOUNT_COLUMNS.find((c) => c.key === sort.key);
+    const value = col?.sortValue ?? ((r: AccountRow) => r.totalCost);
+    const dir = sort.desc ? -1 : 1;
+    return [...rows].sort((a, b) => dir * compareValues(value(a), value(b)) || b.totalCost - a.totalCost || a.accountName.localeCompare(b.accountName));
+  }, [rows, sort]);
+
+  const visible = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return q ? sorted.filter((r) => r.accountName.toLowerCase().includes(q)) : sorted;
+  }, [sorted, filter]);
+
+  const selectedIndex = selected ? visible.findIndex((r) => r.accountName === selected) : -1;
+  const selectedRow = selected ? rows.find((r) => r.accountName === selected) ?? null : null;
+
+  // The account opened from the URL may sit past the first page of rows.
+  const shownCount = Math.max(shown, selectedIndex + 1);
+  const page = visible.slice(0, shownCount);
+
+  function onSort(key: string) {
+    setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: key !== "accountName" }));
   }
+
+  function open(name: string) {
+    setSelected(name);
+    syncUrl(name);
+  }
+
+  const close = useCallback(() => {
+    if (selected) focusRow(selected);
+    setSelected(null);
+    syncUrl(null);
+  }, [selected]);
+
+  const step = useCallback(
+    (delta: -1 | 1) => {
+      const next = visible[selectedIndex + delta];
+      if (selectedIndex < 0 || !next) return;
+      setSelected(next.accountName);
+      syncUrl(next.accountName);
+    },
+    [visible, selectedIndex],
+  );
+
+  const sortIcon = (key: string) =>
+    sort.key === key ? (sort.desc ? <ArrowDown className="h-3 w-3" aria-hidden="true" /> : <ArrowUp className="h-3 w-3" aria-hidden="true" />) : null;
+  const ariaSort = (key: string) => (sort.key === key ? (sort.desc ? "descending" : "ascending") : undefined);
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          value={filter}
+          onChange={(e) => { setFilter(e.target.value); setShown(PAGE); }}
+          placeholder="Filter by name or number"
+          aria-label="Filter accounts by name or number"
+          className="w-full rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm focus:outline-brand sm:w-72"
+        />
         <p className="text-xs text-muted">
-          Sorted by over-quota excess, then total cost. Expand an account for its {year} product-by-month table.
+          {visible.length.toLocaleString()} account(s). Click a row for its {year} product-by-month table.
         </p>
-        <DownloadButton href={`/api/dashboard/export${exportQuery ? `?${exportQuery}` : ""}`} label="All accounts CSV">
-          <Download className="h-4 w-4" aria-hidden="true" />
-        </DownloadButton>
+        <div className="ml-auto">
+          <DownloadButton href={`/api/dashboard/export${exportQuery ? `?${exportQuery}` : ""}`} label="All accounts CSV">
+            <Download className="h-4 w-4" aria-hidden="true" />
+          </DownloadButton>
+        </div>
       </div>
 
-      {rows.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted">No accounts for this filter.</p>
       ) : (
-        <ul className="divide-y divide-line border-y border-line">
-          {rows.map((r) => {
-            const isOpen = open.has(r.accountName);
-            const { label, number } = splitName(r.accountName);
-            const panelId = `acct-${r.accountName.replace(/\W+/g, "-")}`;
-            return (
-              <li key={r.accountName}>
-                <button
-                  type="button"
-                  aria-expanded={isOpen}
-                  aria-controls={panelId}
-                  onClick={() => toggle(r.accountName)}
-                  className={cn("flex w-full items-center gap-3 px-2 py-3 text-left", ROW_HOVER)}
-                >
-                  <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", !isOpen && "-rotate-90")} aria-hidden="true" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-ink" title={r.accountName}>{label}</div>
-                    <div className="text-xs text-muted">{number ? `No. ${number}` : "—"}</div>
-                  </div>
-                  <dl className="hidden shrink-0 grid-cols-3 gap-6 text-right text-xs md:grid">
-                    <div><dt className="text-muted">Revenue</dt><dd className="tabular-nums text-ink">{money(r.revenue)}</dd></div>
-                    <div><dt className="text-muted">FOC+Bonus cost</dt><dd className="tabular-nums text-ink">{money(r.totalCost)}</dd></div>
-                    <div><dt className="text-muted">Cost/revenue</dt><dd><RatioBadge ratio={r.ratio} /></dd></div>
-                  </dl>
-                  <div className="shrink-0 text-right">
-                    {r.overCount > 0 ? (
-                      <span title={`Excess value ${money(r.overCost)} THB, cumulative`}>
-                        <Badge tone="negative">{r.overCount} over quota</Badge>
-                      </span>
-                    ) : null}
-                    <div className="mt-1 text-xs tabular-nums text-muted md:hidden">
-                      {money(r.totalCost)} · <RatioBadge ratio={r.ratio} />
+        <>
+          {/* Phone: one compact card per account. */}
+          <ul className="divide-y divide-line border-y border-line md:hidden">
+            {page.map((r) => {
+              const { label, number } = splitName(r.accountName);
+              return (
+                <li key={r.accountName}>
+                  <button
+                    type="button"
+                    data-acct-row={r.accountName}
+                    onClick={() => open(r.accountName)}
+                    className={cn("flex w-full items-center gap-3 px-2 py-3 text-left", ROW_HOVER)}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-ink">{label}</div>
+                      <div className="text-xs text-muted">{number ? `No. ${number}` : "—"}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted">
+                        <span>{money(r.totalCost)}</span>
+                        <RatioBadge ratio={r.ratio} />
+                      </div>
+                      {r.net && (
+                        <div className="mt-1.5 flex flex-wrap items-start gap-x-4 gap-y-1">
+                          <QuotaCell row={r} align="left" />
+                          {r.net.focStandaloneCost > 0 && (
+                            <span className="text-[11px] text-muted">FOC only <FocOnlyCell row={r} /></span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </button>
-                {isOpen && (
-                  <div id={panelId} className="border-t border-line/60 bg-canvas/40 px-1 md:px-3">
-                    <AccountMatrixPanel
-                      key={`${r.accountName}|${year}`}
-                      name={r.accountName}
-                      year={year}
-                      measure={measure}
-                      onFullDetail={() => setDetail(r.accountName)}
-                    />
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                    <Sparkline values={r.monthlyCost} year={year} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Desktop: one line per account under a sticky header. */}
+          <table className="hidden w-full text-sm md:table">
+            <thead className="text-xs text-muted">
+              <tr>
+                {[ACCOUNT_NAME_COLUMN, ...ACCOUNT_COLUMNS].map((c) => (
+                  <th
+                    key={c.key}
+                    scope="col"
+                    aria-sort={ariaSort(c.key)}
+                    title={c.hint}
+                    className={cn("sticky top-[68px] z-10 border-y border-line bg-brand-tint px-3 py-2 font-medium", c.align === "right" ? "text-right" : "text-left")}
+                  >
+                    {c.sortValue ? (
+                      <button type="button" onClick={() => onSort(c.key)} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === c.key && "text-ink")}>
+                        {c.label}
+                        {sortIcon(c.key)}
+                      </button>
+                    ) : (
+                      c.label
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {page.map((r) => {
+                const { label, number } = splitName(r.accountName);
+                return (
+                  <tr
+                    key={r.accountName}
+                    onClick={() => open(r.accountName)}
+                    className={cn("cursor-pointer border-b border-line/60", ROW_HOVER, r.accountName === selected && "bg-brand-tint/60")}
+                  >
+                    <td className="max-w-0 px-3 py-2">
+                      <button
+                        type="button"
+                        data-acct-row={r.accountName}
+                        aria-haspopup="dialog"
+                        className="block w-full text-left"
+                        title={r.accountName}
+                      >
+                        <span className="block truncate font-medium text-ink">{label}</span>
+                        <span className="block text-xs text-muted">{number ? `No. ${number}` : "—"}</span>
+                      </button>
+                    </td>
+                    {ACCOUNT_COLUMNS.map((c) => (
+                      <td key={c.key} className={cn("px-3 py-2", c.align === "right" && "text-right")}>{c.cell(r, { year })}</td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {visible.length > shownCount && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => setShown(shownCount + PAGE)}
+                className="rounded-lg border border-line-strong px-4 py-2 text-sm font-medium text-brand hover:bg-canvas"
+              >
+                Show {Math.min(PAGE, visible.length - shownCount)} more
+              </button>
+              <p className="mt-1 text-xs text-muted">Showing {shownCount.toLocaleString()} of {visible.length.toLocaleString()}</p>
+            </div>
+          )}
+        </>
       )}
 
+      {selectedRow && (
+        <AccountDrawer
+          row={selectedRow}
+          position={selectedIndex + 1}
+          total={visible.length}
+          year={year}
+          measure={measure}
+          itemGroups={itemGroups}
+          suspended={detail !== null}
+          onClose={close}
+          onStep={step}
+          onFullDetail={() => setDetail(selectedRow.accountName)}
+        />
+      )}
       {detail && <AccountDrilldown key={detail} accountName={detail} onClose={() => setDetail(null)} />}
     </div>
   );

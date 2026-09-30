@@ -3,7 +3,7 @@ import { loadDashboardScope } from "@/lib/dashboard/scope";
 import { longFactsCsv } from "@/lib/dashboard/focExports";
 import type { DashboardParams } from "@/lib/dashboard/filters";
 
-const KEYS = ["year", "month", "mto", "ateam", "q", "hi", "xna", "sig", "top"] as const;
+const KEYS = ["year", "month", "mto", "ateam", "q", "hi", "xna", "sig", "top", "ig"] as const;
 
 /** Long-format CSV of every account matching the Dashboard's current filters (same param names as the page). */
 export async function GET(request: Request) {

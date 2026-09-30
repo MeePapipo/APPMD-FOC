@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
 
 // FocActual.team stores the raw TLevel3 string from the Tableau source, not
 // this app's own Team enum — hence the "ateam" param name and these literal
@@ -51,11 +53,14 @@ export function ActualsFilters({
   years,
   accountNames,
   accountCount,
+  itemGroupChoices,
 }: {
   view: "accounts" | "overview" | "alerts";
   years: number[];
   accountNames: string[];
   accountCount: number;
+  /** Every Item Group present in the data. */
+  itemGroupChoices: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -110,6 +115,8 @@ export function ActualsFilters({
           ))}
         </select>
 
+        <ItemGroupFilter choices={itemGroupChoices} value={get("ig")} onChange={(v) => setParam("ig", v)} />
+
         <span className="ml-auto text-xs text-muted">{accountCount.toLocaleString()} ship-to account(s)</span>
       </div>
 
@@ -148,11 +155,12 @@ export function ActualsFilters({
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
+                aria-label="Flagged accounts only: over quota or stand-alone FOC past its threshold"
                 checked={get("sig") === "1"}
                 onChange={(e) => setParam("sig", e.target.checked ? "1" : "")}
                 className="h-4 w-4 rounded border-line-strong accent-brand"
               />
-              Over quota only
+              Flagged only
             </label>
           )}
           {view === "overview" && (
@@ -169,5 +177,55 @@ export function ActualsFilters({
         </div>
       </div>
     </div>
+  );
+}
+
+const DEFAULTS: readonly string[] = DEFAULT_ITEM_GROUPS;
+
+/** Item Group picker: a `<details>` of checkboxes writing the "|"-separated `ig` param (empty = the default groups). */
+function ItemGroupFilter({ choices, value, onChange }: { choices: string[]; value: string; onChange: (v: string) => void }) {
+  const picked = value.split("|").map((x) => x.trim()).filter(Boolean);
+  const defaults = choices.filter((c) => DEFAULTS.includes(c));
+  const current = picked.length > 0 ? picked : defaults;
+  const [open, setOpen] = useState(false);
+
+  function write(next: string[]) {
+    const same = next.length === defaults.length && next.every((g) => defaults.includes(g));
+    onChange(same || next.length === 0 ? "" : next.join("|"));
+  }
+  function toggle(group: string) {
+    write(current.includes(group) ? current.filter((g) => g !== group) : [...current, group]);
+  }
+
+  return (
+    <details
+      className="relative"
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className={cn(selectClass, "flex cursor-pointer list-none items-center gap-2 select-none")} aria-label="Item Group">
+        Item Group
+        <span className="rounded-full bg-brand-tint px-1.5 text-xs font-medium tabular-nums text-brand">
+          {picked.length > 0 ? picked.length : "Default"}
+        </span>
+      </summary>
+      <div className="absolute left-0 z-30 mt-1 w-64 rounded-lg border border-line-strong bg-surface p-3 shadow-lg">
+        <div className="mb-2 flex gap-2 text-xs">
+          <button type="button" onClick={() => onChange("")} className="rounded-full border border-line-strong px-2.5 py-0.5 text-ink hover:bg-canvas">Default</button>
+          <button type="button" onClick={() => onChange(choices.join("|"))} className="rounded-full border border-line-strong px-2.5 py-0.5 text-ink hover:bg-canvas">All</button>
+          <button type="button" onClick={() => setOpen(false)} className="ml-auto text-muted hover:text-ink">Close</button>
+        </div>
+        <ul className="max-h-64 space-y-1 overflow-y-auto">
+          {choices.map((g) => (
+            <li key={g}>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" checked={current.includes(g)} onChange={() => toggle(g)} className="h-4 w-4 rounded border-line-strong accent-brand" />
+                <span className="truncate" title={g}>{g}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
   );
 }

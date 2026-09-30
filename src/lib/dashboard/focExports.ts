@@ -12,12 +12,12 @@ export const CSV_BOM = "﻿";
 
 export type EntitlementLite = Pick<EntitlementRow, "materialNo" | "expected" | "free" | "significant">;
 
-export type QuotaStatus = "Alert" | "Over" | "Within" | "";
+export type QuotaStatus = "Over Quota" | "Over" | "Within" | "";
 
-/** Alert = over quota beyond the admin thresholds; Over = any excess; "" = no quota row. */
+/** Over Quota = beyond the admin thresholds; Over = any excess; "" = no quota row. */
 export function quotaStatus(e: EntitlementLite | undefined): QuotaStatus {
   if (!e) return "";
-  if (e.significant) return "Alert";
+  if (e.significant) return "Over Quota";
   return e.free > e.expected ? "Over" : "Within";
 }
 
@@ -64,8 +64,8 @@ export function accountMatrixCsv(
     ["Year", matrix.year],
     ["Measure", unit],
     [],
-    MATRIX_HEADERS,
-    ...matrixTable(matrix, entitlement, measure),
+    [...MATRIX_HEADERS, "item_group"],
+    ...matrixTable(matrix, entitlement, measure).map((r, i) => [...r, matrix.rows[i]?.itemGroup ?? ""]),
   ]);
 }
 
@@ -75,6 +75,7 @@ export type LongFact = {
   rep: string | null;
   materialNo: string;
   productName: string;
+  category?: string | null;
   year: number;
   month: number;
   focQty: number;
@@ -85,7 +86,7 @@ export type LongFact = {
 
 export const LONG_HEADERS = [
   "Account", "Account no", "Team", "Rep", "Product code", "Product name", "Year", "Month",
-  "FOC qty", "Bonus qty", "FOC cost", "Bonus cost",
+  "FOC qty", "Bonus qty", "FOC cost", "Bonus cost", "item_group",
 ];
 
 const accountNo = (name: string) => name.match(/\(([^()]+)\)\s*$/)?.[1].trim() ?? "";
@@ -102,7 +103,7 @@ export function longFactsCsv(facts: LongFact[]): string {
     LONG_HEADERS,
     ...sorted.map((f) => [
       accountLabel(f.accountName), accountNo(f.accountName), f.team ?? "", f.rep ?? "", f.materialNo, f.productName,
-      f.year, f.month, f.focQty, f.bonusQty, f.focCost, f.bonusCost,
+      f.year, f.month, f.focQty, f.bonusQty, f.focCost, f.bonusCost, f.category ?? "",
     ]),
   ]);
 }

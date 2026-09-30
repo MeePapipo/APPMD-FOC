@@ -15,10 +15,13 @@ import {
   type Split,
 } from "@/lib/dashboard/focAccountMatrix";
 import { quotaPct, quotaStatus, type EntitlementLite } from "@/lib/dashboard/focExports";
+import type { NetSummary } from "@/lib/dashboard/entitlement";
+import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
+import { compactThb, formatOverPct } from "@/lib/dashboard/accountQuota";
 
 type Loaded = {
   matrix: AccountMatrix;
-  entitlement: { rows: EntitlementLite[] };
+  entitlement: { rows: EntitlementLite[]; net?: NetSummary };
 };
 
 const SPLITS: { value: Split; label: string }[] = [
@@ -40,7 +43,7 @@ function QuotaBadge({ entitlement }: { entitlement: EntitlementLite | undefined 
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs tabular-nums">
       {pct === null ? "no quota" : `${Math.round(pct)}%`}
-      {status === "Alert" && <Badge tone="negative">Alert</Badge>}
+      {status === "Over Quota" && <Badge tone="negative">Over Quota</Badge>}
       {status === "Over" && <Badge tone="warning">Over</Badge>}
       {status === "Within" && <Badge tone="positive">Within</Badge>}
     </span>
@@ -58,22 +61,26 @@ export function AccountMatrixPanel({
   name,
   year,
   measure,
+  itemGroups,
   onFullDetail,
 }: {
   name: string;
   year: number;
   measure: Measure;
+  /** The page's `ig` param ("|"-separated), "" = default groups. */
+  itemGroups: string;
   onFullDetail: () => void;
 }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [split, setSplit] = useState<Split>("both");
+  const igQuery = itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : "";
 
   useEffect(() => {
     // The parent keys this panel by name+year, so a change remounts with
     // fresh state rather than needing an effect to clear the old matrix.
     let cancelled = false;
-    fetch(`/api/dashboard/account?name=${encodeURIComponent(name)}&year=${year}`)
+    fetch(`/api/dashboard/account?name=${encodeURIComponent(name)}&year=${year}${igQuery}`)
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Failed to load account.");
         return res.json();
@@ -81,7 +88,7 @@ export function AccountMatrixPanel({
       .then((json) => { if (!cancelled) setData(json); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load account."); });
     return () => { cancelled = true; };
-  }, [name, year]);
+  }, [name, year, igQuery]);
 
   if (error) return <p role="alert" className="py-6 text-center text-sm text-negative">{error}</p>;
   if (!data) return <p className="py-6 text-center text-sm text-muted">Loading…</p>;
@@ -89,11 +96,15 @@ export function AccountMatrixPanel({
   const { matrix } = data;
   const byMat = new Map(data.entitlement.rows.map((e) => [e.materialNo, e]));
   const value = (c: MatrixCell) => cellValue(c, measure, split);
-  const query = `name=${encodeURIComponent(name)}&year=${year}&measure=${measure}`;
+  const query = `name=${encodeURIComponent(name)}&year=${year}&measure=${measure}${igQuery}`;
+  // Show the Item Group column once the selection reaches past the default groups.
+  const showGroup = itemGroups.split("|").some((g) => g && !(DEFAULT_ITEM_GROUPS as readonly string[]).includes(g));
+  const net = data.entitlement.net;
   const unit = measure === "qty" ? "units" : "THB";
 
   return (
     <div className="px-1 pb-4 pt-3">
+      {net && <NetStrip net={net} />}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div role="group" aria-label="FOC or Bonus" className="inline-flex overflow-hidden rounded-lg border border-line-strong text-xs">
           {SPLITS.map((s) => (
@@ -131,7 +142,7 @@ export function AccountMatrixPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h4 className="text-sm font-medium text-ink">{r.productName}</h4>
-                      <p className="text-xs text-muted">{r.materialNo}</p>
+                      <p className="text-xs text-muted">{r.materialNo}{showGroup && r.itemGroup ? ` · ${r.itemGroup}` : ""}</p>
                     </div>
                     <QuotaBadge entitlement={e} />
                   </div>
@@ -160,6 +171,7 @@ export function AccountMatrixPanel({
               <thead className="bg-brand-tint text-xs text-muted">
                 <tr className="border-y border-line">
                   <th scope="col" className="sticky left-0 z-10 min-w-56 bg-brand-tint px-3 py-2 text-left">Product</th>
+                  {showGroup && <th scope="col" className="px-2 py-2 text-left">Item Group</th>}
                   <th scope="col" className="px-2 py-2 text-right" title="Cumulative entitlement over the account's full history, in units">Entitled</th>
                   <th scope="col" className="px-2 py-2 text-right">Prior yr</th>
                   {MONTH_SHORT.map((m) => (
@@ -179,6 +191,7 @@ export function AccountMatrixPanel({
                         <div className="max-w-64 truncate text-ink" title={r.productName}>{r.productName}</div>
                         <div className="text-xs text-muted">{r.materialNo}</div>
                       </th>
+                      {showGroup && <td className="max-w-32 truncate px-2 py-2 text-xs text-muted" title={r.itemGroup ?? undefined}>{r.itemGroup ?? "—"}</td>}
                       <td className="px-2 py-2 text-right tabular-nums text-muted">{e ? e.expected.toLocaleString() : "—"}</td>
                       <td className="px-2 py-2 text-right tabular-nums" title={splitTitle(r.prior)}>{fmt(value(r.prior))}</td>
                       {r.months.map((c, i) => (
@@ -193,6 +206,7 @@ export function AccountMatrixPanel({
               <tfoot>
                 <tr className="border-t border-line-strong text-xs font-medium">
                   <th scope="row" className="sticky left-0 z-10 bg-surface px-3 py-2 text-left">Total</th>
+                  {showGroup && <td />}
                   <td />
                   <td className="px-2 py-2 text-right tabular-nums">{fmt(value(matrix.totals.prior))}</td>
                   {matrix.totals.months.map((c, i) => (
@@ -216,5 +230,36 @@ function CardStat({ label, value, title, strong }: { label: string; value: strin
       <dt className="text-muted">{label}</dt>
       <dd className={cn("tabular-nums text-ink", strong && "font-medium")}>{value}</dd>
     </div>
+  );
+}
+
+/** Entitled / Bonus given / Net excess / Stand-alone FOC for the account, above the matrix. */
+function NetStrip({ net }: { net: NetSummary }) {
+  const tile = "rounded-lg border border-line bg-canvas px-3 py-2";
+  return (
+    <dl className="mb-3 grid grid-cols-2 gap-2 text-xs lg:grid-cols-4" aria-label="Account quota summary">
+      <div className={tile} title={`${net.entitledValue.toLocaleString()} THB at master prices, optional items excluded`}>
+        <dt className="text-muted">Entitled value</dt>
+        <dd className="text-sm tabular-nums text-ink">{compactThb(net.entitledValue)} THB</dd>
+      </div>
+      <div className={tile} title={`${net.bonusValue.toLocaleString()} THB`}>
+        <dt className="text-muted">Bonus given</dt>
+        <dd className="text-sm tabular-nums text-ink">{compactThb(net.bonusValue)} THB</dd>
+      </div>
+      <div className={tile} title={`${net.excessValue.toLocaleString()} THB`}>
+        <dt className="text-muted">Net excess</dt>
+        <dd className="flex flex-wrap items-center gap-1.5 text-sm tabular-nums text-ink">
+          {compactThb(net.excessValue)} THB <span className="text-xs text-muted">{formatOverPct(net.overPct)}</span>
+          {net.over ? <Badge tone="negative">Over Quota</Badge> : <Badge tone="positive">Within</Badge>}
+        </dd>
+      </div>
+      <div className={tile} title="Given with no reagent sold alongside it; carries VAT">
+        <dt className="text-muted">Stand-alone FOC</dt>
+        <dd className="flex flex-wrap items-center gap-1.5 text-sm tabular-nums text-ink">
+          {compactThb(net.focStandaloneCost)} THB
+          {net.focFlagged && <Badge tone="warning">Flag</Badge>}
+        </dd>
+      </div>
+    </dl>
   );
 }

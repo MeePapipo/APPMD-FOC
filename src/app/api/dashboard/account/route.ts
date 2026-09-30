@@ -2,6 +2,7 @@ import { getSessionUser } from "@/lib/session";
 import { accountMonthlyTrend, accountProductsGiven, accountProductsSold, accountSummary } from "@/lib/dashboard/focAccountDetail";
 import { buildAccountMatrix } from "@/lib/dashboard/focAccountMatrix";
 import { loadAccountDetail } from "@/lib/dashboard/accountDetailLoader";
+import { parseItemGroups } from "@/lib/dashboard/filters";
 
 /**
  * Per-account drill-down for the Dashboard. The original fields are scoped to
@@ -20,11 +21,11 @@ export async function GET(request: Request) {
   const name = params.get("name");
   if (!name) return Response.json({ error: "Missing account name" }, { status: 400 });
 
-  const detail = await loadAccountDetail(name);
+  const detail = await loadAccountDetail(name, parseItemGroups(params.get("ig") ?? undefined));
   if (!detail) return Response.json({ error: "Account not found" }, { status: 404 });
   const { rows, entitlement } = detail;
 
-  const years = [...new Set(rows.map((r) => r.year))].sort((a, b) => b - a);
+  const years = detail.years;
   const askedYear = Number(params.get("year"));
   const year = Number.isInteger(askedYear) && askedYear > 0 ? askedYear : years[0];
 

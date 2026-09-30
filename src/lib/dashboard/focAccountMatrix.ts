@@ -10,6 +10,8 @@ export type MatrixFact = {
   month: number;
   materialNo: string;
   productName: string;
+  /** Item Group (Product Category), when known. */
+  category?: string | null;
   focQty: number;
   bonusQty: number;
   focCost: number;
@@ -21,6 +23,8 @@ export type MatrixCell = { focQty: number; bonusQty: number; focCost: number; bo
 export type MatrixRow = {
   materialNo: string;
   productName: string;
+  /** Item Group, null when unknown. */
+  itemGroup: string | null;
   /** Index 0 = January. Always 12 cells, zero-filled. */
   months: MatrixCell[];
   ytd: MatrixCell;
@@ -74,9 +78,10 @@ export function buildAccountMatrix(facts: MatrixFact[], year: number): AccountMa
     const key = f.materialNo || f.productName;
     let row = byProduct.get(key);
     if (!row) {
-      row = { materialNo: f.materialNo, productName: f.productName, months: Array.from({ length: 12 }, emptyCell), ytd: emptyCell(), prior: emptyCell() };
+      row = { materialNo: f.materialNo, productName: f.productName, itemGroup: f.category ?? null, months: Array.from({ length: 12 }, emptyCell), ytd: emptyCell(), prior: emptyCell() };
       byProduct.set(key, row);
     }
+    if (!row.itemGroup && f.category) row.itemGroup = f.category;
     if (inYear) {
       addInto(row.months[f.month - 1], f);
       addInto(row.ytd, f);

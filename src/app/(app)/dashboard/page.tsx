@@ -9,14 +9,16 @@ import { ActualsFilters } from "@/components/dashboard/ActualsFilters";
 import { ExcludeNaToggle } from "@/components/dashboard/ExcludeNaToggle";
 import { OverQuotaToggle } from "@/components/dashboard/OverQuotaToggle";
 import { loadDashboardScope } from "@/lib/dashboard/scope";
-import { matrixYear, parseView, type DashboardParams, type DashboardView } from "@/lib/dashboard/filters";
+import { VIEWS, inPeriodScope, matrixYear, type DashboardParams, type DashboardView } from "@/lib/dashboard/filters";
 import { financeByMonth, withRatio } from "@/lib/dashboard/focFinance";
 import { loadAllowedProductLines } from "@/lib/dashboard/importSettings";
 import { loadDataThrough } from "@/lib/dashboard/dataThrough";
 import { periodLabel } from "@/lib/dashboard/period";
 import { FocActualsImportControl } from "@/components/dashboard/FocActualsImportControl";
-import { AccountsView } from "@/components/dashboard/AccountsView";
-import { AlertsView, type AlertListItem } from "@/components/dashboard/AlertsView";
+import { monthlyCostByAccount } from "@/lib/dashboard/accountSeries";
+import { AccountsView, type AccountRow } from "@/components/dashboard/AccountsView";
+import { AlertsView } from "@/components/dashboard/AlertsView";
+import { overQuotaAccounts, standaloneFocAccounts } from "@/lib/dashboard/alertLists";
 import { DashboardViewTabs } from "@/components/dashboard/DashboardViewTabs";
 import { FocActualsAccountTable } from "@/components/dashboard/FocActualsAccountTable";
 import { StatTile } from "@/components/dashboard/StatTile";
@@ -36,13 +38,14 @@ const revFocSeries = [
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<DashboardParams>;
+  searchParams: Promise<PageParams>;
 }) {
   // Visible to every logged-in user regardless of role — this is a shared
   // reporting view, not an admin tool (praditww's explicit decision).
   const user = await requireUser();
   const params = await searchParams;
-  const view = parseView(params.view);
+  // Overview is the landing view: no (or an unknown) `view` param means overview.
+  const view: DashboardView = (VIEWS as readonly string[]).includes(params.view ?? "") ? (params.view as DashboardView) : "overview";
 
   return (
     <div>
@@ -56,7 +59,7 @@ export default async function DashboardPage({
   );
 }
 
-async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; view: DashboardView; params: DashboardParams }) {
+async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; view: DashboardView; params: PageParams }) {
   const [allowedProductLines, dataThrough] = await Promise.all([loadAllowedProductLines(), loadDataThrough()]);
   // The account picker (an exact dropdown, not free text — see
   // ActualsFilters), the >20% toggle, the over-quota toggle and the "exclude
@@ -67,7 +70,7 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
   // excluding them is a separate toggle from ">20% only" (which, correctly,
   // still counts an N/A account as a breach: an unbillable give-away is worse
   // than 20%, not undefined for that purpose).
-  const { allActuals, years, accountNames, accountRows, facts, alerts } = await loadDashboardScope(params);
+  const { allActuals, years, accountNames, accountRows, facts, alerts, itemGroupChoices } = await loadDashboardScope(params);
 
   if (allActuals.length === 0) {
     return (
@@ -90,48 +93,59 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
       </p>
 
       <DashboardViewTabs current={view} params={{ ...params }} />
-      <ActualsFilters view={view} years={years} accountNames={accountNames} accountCount={accountRows.length} />
+      <ActualsFilters view={view} years={years} accountNames={accountNames} accountCount={accountRows.length} itemGroupChoices={itemGroupChoices} />
 
-      {view === "accounts" && <AccountsContent params={params} years={years} accountRows={accountRows} />}
+      {view === "accounts" && <AccountsContent params={params} years={years} accountRows={accountRows} allActuals={allActuals} />}
       {view === "overview" && <OverviewContent accountRows={accountRows} facts={facts} />}
       {view === "alerts" && <AlertsContent accountRows={accountRows} facts={facts} alerts={alerts} />}
     </div>
   );
 }
 
+/** The shared filter params plus the Accounts drawer's `acct` (exact account name). */
+type PageParams = DashboardParams & { acct?: string };
+
 type Scope = Awaited<ReturnType<typeof loadDashboardScope>>;
 
-function AccountsContent({ params, years, accountRows }: { params: DashboardParams; years: number[]; accountRows: Scope["accountRows"] }) {
-  // Over-quota excess first, then total cost — the accounts that need a
-  // conversation lead the list.
-  const sorted = [...accountRows].sort((a, b) => b.overCost - a.overCost || b.totalCost - a.totalCost);
+function AccountsContent({ params, years, accountRows, allActuals }: { params: PageParams; years: number[]; accountRows: Scope["accountRows"]; allActuals: Scope["allActuals"] }) {
+  const year = matrixYear(params, years);
+  // The sparkline shows the whole selected year (team filter applies, the
+  // month range does not), so a month filter never flattens the trend.
+  const inScope = new Set(accountRows.map((a) => a.accountName));
+  const series = monthlyCostByAccount(
+    allActuals.filter((f) => inPeriodScope(f, { ...params, month: undefined, mto: undefined, year: String(year) })),
+    year,
+    inScope,
+  );
+  const rows: AccountRow[] = accountRows.map((a) => ({ ...a, monthlyCost: series[a.accountName] ?? Array<number>(12).fill(0) }));
   const exportParams = new URLSearchParams();
-  for (const key of ["year", "month", "mto", "ateam", "q", "hi", "xna", "sig", "top"] as const) {
+  for (const key of ["year", "month", "mto", "ateam", "q", "hi", "xna", "sig", "top", "ig"] as const) {
     if (params[key]) exportParams.set(key, params[key]);
   }
   return (
     <AccountsView
-      rows={sorted}
-      year={matrixYear(params, years)}
+      rows={rows}
+      year={year}
       measure={params.m === "cost" ? "cost" : "qty"}
       exportQuery={exportParams.toString()}
-      openByDefault={Boolean(params.q)}
+      initialAcct={params.acct ?? null}
+      itemGroups={params.ig ?? ""}
     />
   );
 }
 
 function AlertsContent({ accountRows, facts, alerts }: { accountRows: Scope["accountRows"]; facts: Scope["facts"]; alerts: Scope["alerts"] }) {
-  // Team/rep per account: whichever appears on the most rows in scope.
+  // Team per account: whichever appears on the most rows in scope.
   const dominant = (name: string, pick: "team" | "rep"): string | null => {
     const counts = new Map<string, number>();
     for (const f of facts) if (f.accountName === name && f[pick]) counts.set(f[pick]!, (counts.get(f[pick]!) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   };
-  const items: AlertListItem[] = accountRows
-    .flatMap((a) => (alerts.get(a.accountName)?.items ?? []).map((i) => ({ ...i, accountName: a.accountName, team: dominant(a.accountName, "team"), rep: dominant(a.accountName, "rep") })))
-    .sort((a, b) => b.excessValue - a.excessValue);
+  const teamOf = (name: string) => dominant(name, "team");
+  const overQuota = overQuotaAccounts(accountRows, alerts, teamOf);
+  const standalone = standaloneFocAccounts(accountRows, alerts, teamOf);
   const byTeam = focTeamBreakdown(facts).map((t) => ({ key: t.team, ...withRatio(t) }));
-  return <AlertsView items={items} byMonth={financeByMonth(facts)} byTeam={byTeam} />;
+  return <AlertsView overQuota={overQuota} standalone={standalone} byMonth={financeByMonth(facts)} byTeam={byTeam} />;
 }
 
 function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRows"]; facts: Scope["facts"] }) {

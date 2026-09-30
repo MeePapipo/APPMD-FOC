@@ -3,8 +3,8 @@ import { cn } from "@/lib/cn";
 import type { DashboardView } from "@/lib/dashboard/filters";
 
 const TABS: { view: DashboardView; label: string }[] = [
-  { view: "accounts", label: "Accounts" },
   { view: "overview", label: "Overview" },
+  { view: "accounts", label: "Accounts" },
   { view: "alerts", label: "Alerts & finance" },
 ];
 
@@ -13,8 +13,9 @@ const TABS: { view: DashboardView; label: string }[] = [
 export function DashboardViewTabs({ current, params }: { current: DashboardView; params: Record<string, string | undefined> }) {
   const hrefFor = (view: DashboardView) => {
     const next = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) if (v && k !== "view") next.set(k, v);
-    if (view !== "accounts") next.set("view", view);
+    // `acct` belongs to the Accounts drawer, so it does not follow a tab switch.
+    for (const [k, v] of Object.entries(params)) if (v && k !== "view" && k !== "acct") next.set(k, v);
+    if (view !== "overview") next.set("view", view);
     const qs = next.toString();
     return qs ? `/dashboard?${qs}` : "/dashboard";
   };

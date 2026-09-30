@@ -55,7 +55,7 @@ function sortValue(r: EntitlementRow, key: SortKey): number | string {
 }
 
 const BUCKETS: { key: EntitlementRow["bucket"]; title: string; hint: string; totalKey: keyof Entitlement["totals"]; defaultOpen?: boolean }[] = [
-  { key: "over", title: "ส่งเกินสิทธิ์", hint: "แถมมากกว่าที่สูตรคำนวณได้", totalKey: "overCost", defaultOpen: true },
+  { key: "over", title: "Over Quota", hint: "Given more than the quota", totalKey: "overCost", defaultOpen: true },
   { key: "within", title: "อยู่ในสิทธิ์", hint: "แถมเท่ากับหรือน้อยกว่าสิทธิ์", totalKey: "withinCost" },
   { key: "noRule", title: "ไม่มีสูตรคำนวณ", hint: "ไม่มีทั้งในไฟล์ master และในรายการ Additional FOC", totalKey: "noRuleCost" },
   { key: "reagent", title: "น้ำยาหลักแถมฟรี", hint: "ไม่นำมาเทียบ — เป็นการตัดสินใจเชิงพาณิชย์", totalKey: "reagentFreeCost" },
@@ -175,7 +175,7 @@ export function EntitlementTable({ entitlement }: { entitlement: Entitlement }) 
                             )}
                             {r.significant && (
                               <span className="ml-2 align-middle">
-                                <Badge tone="negative">Alert</Badge>
+                                <Badge tone="negative">Over Quota</Badge>
                               </span>
                             )}
                           </td>

@@ -26,7 +26,7 @@ const COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "bonusCost", label: "Bonus cost", align: "right" },
   { key: "totalCost", label: "Total cost", align: "right" },
   { key: "ratio", label: "% cost/revenue", align: "right" },
-  { key: "overCost", label: "Over quota", align: "right" },
+  { key: "overCost", label: "Over Quota", align: "right" },
 ];
 
 const money = (n: number) => Math.round(n).toLocaleString();
