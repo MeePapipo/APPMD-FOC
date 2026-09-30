@@ -14,6 +14,7 @@ const money = (n: number) => `${Math.round(n).toLocaleString()} THB`;
 type AccountDetail = {
   accountName: string;
   accountNumber: string | null;
+  ownTpbUsed?: boolean;
   team: string | null;
   rep: string | null;
   summary: { revenue: number; focCost: number; bonusCost: number; totalCost: number; ratio: number };
@@ -28,7 +29,7 @@ type AccountDetail = {
       free: number; sold: number; freeCost: number; excessValue: number; over: number; ratio: number | null;
       bucket: "over" | "within" | "noRule" | "reagent" | "wrongPlatform" | "additional";
     }[];
-    totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number };
+    totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number; significantCount: number; significantCost: number };
   };
 };
 
@@ -149,6 +150,11 @@ export function AccountDrilldown({ accountName, onClose }: { accountName: string
                 )}
               </div>
 
+              {detail.ownTpbUsed && (
+                <p className="-mb-3 text-xs text-muted">
+                  Quota below is worked out with this account&apos;s own tests-per-run (never below half the national figure), not the national average.
+                </p>
+              )}
               <EntitlementTable entitlement={detail.entitlement} />
 
               <div>

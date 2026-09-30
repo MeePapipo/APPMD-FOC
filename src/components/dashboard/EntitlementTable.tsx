@@ -19,13 +19,14 @@ type EntitlementRow = {
   over: number;
   ratio: number | null;
   bucket: "over" | "within" | "noRule" | "reagent" | "wrongPlatform" | "additional";
+  significant?: boolean; // over quota beyond the admin's alert thresholds
 };
 
 type Entitlement = {
   platform: { platform: string; basis: string; has4800: boolean };
   assayTests: { code: string; tests: number; batches: number }[];
   rows: EntitlementRow[];
-  totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number };
+  totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number; significantCount: number; significantCost: number };
 };
 
 const money = (n: number) => `${Math.round(n).toLocaleString()}`;
@@ -170,6 +171,11 @@ export function EntitlementTable({ entitlement }: { entitlement: Entitlement }) 
                             {r.optional && (
                               <span className="ml-2 align-middle">
                                 <Badge tone="neutral">Optional</Badge>
+                              </span>
+                            )}
+                            {r.significant && (
+                              <span className="ml-2 align-middle">
+                                <Badge tone="negative">Alert</Badge>
                               </span>
                             )}
                           </td>

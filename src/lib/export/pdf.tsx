@@ -32,12 +32,12 @@ const WARN_TINT = "#fdf3e6";
 const WARN_INK = "#9b5400";
 
 /** The font family in use, as a stylesheet value. */
-const FONT_FAMILY = "ThaiBody";
+export const FONT_FAMILY = "ThaiBody";
 
 let fontReady = false;
 
 /** Registered once per process; re-registering on every request leaks handles. */
-function ensureFont(): void {
+export function ensureFont(): void {
   if (fontReady) return;
   const found = findThaiFont();
   if (!found) throw new MissingThaiFontError();
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   headCell: { color: MUTED, fontSize: 6 },
   row: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: LINE, paddingVertical: 3 },
   cell: { fontSize: 6.5 },
-  empty: { fontSize: 7, color: MUTED, fontStyle: "italic", paddingVertical: 4 },
+  empty: { fontSize: 7, color: MUTED, paddingVertical: 4 },
   totalRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8, gap: 12 },
   totalLabel: { fontSize: 9, fontWeight: "bold" },
   totalValue: { fontSize: 10, fontWeight: "bold", width: 80, textAlign: "right" },
@@ -113,7 +113,7 @@ export function thaiSafe(text: string): string {
  * Every piece of text on the page goes through here rather than through `Text`
  * directly, so no literal can skip the SARA AM fix by being added later.
  */
-function T({ children, style }: { children: string | number; style?: Style | Style[] }) {
+export function T({ children, style }: { children: string | number; style?: Style | Style[] }) {
   return <Text style={style}>{typeof children === "number" ? money(children) : thaiSafe(children)}</Text>;
 }
 

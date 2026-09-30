@@ -13,6 +13,8 @@ export type AccountRow = {
   bonusCost: number;
   totalCost: number;
   ratio: number;
+  overCount: number; // items over quota beyond the alert thresholds (cumulative)
+  overCost: number; // their excess value
 };
 
 type SortKey = keyof Omit<AccountRow, "accountName"> | "accountName";
@@ -24,6 +26,7 @@ const COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "bonusCost", label: "Bonus cost", align: "right" },
   { key: "totalCost", label: "Total cost", align: "right" },
   { key: "ratio", label: "% cost/revenue", align: "right" },
+  { key: "overCost", label: "Over quota", align: "right" },
 ];
 
 const money = (n: number) => Math.round(n).toLocaleString();
@@ -97,6 +100,15 @@ export function FocActualsAccountTable({ rows }: { rows: AccountRow[] }) {
               <td className="py-2 pl-3 text-right tabular-nums">{money(r.totalCost)}</td>
               <td className="py-2 pl-3 text-right">
                 <RatioBadge ratio={r.ratio} />
+              </td>
+              <td className="py-2 pl-3 text-right tabular-nums">
+                {r.overCount > 0 ? (
+                  <span className="text-negative" title="Items given beyond quota, cumulative over the account's history">
+                    {r.overCount} item{r.overCount === 1 ? "" : "s"} · {money(r.overCost)}
+                  </span>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
               </td>
             </tr>
           ))}

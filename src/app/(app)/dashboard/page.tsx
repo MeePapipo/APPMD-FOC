@@ -1,16 +1,23 @@
 import { requireUser } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 import {
-  focAccountRows,
   focCostComposition,
   focMonthlyTrend,
   focTeamBreakdown,
   focTopProducts,
-  type FocActualFact,
 } from "@/lib/dashboard/focActualsAggregate";
 import { ActualsFilters } from "@/components/dashboard/ActualsFilters";
 import { ExcludeNaToggle } from "@/components/dashboard/ExcludeNaToggle";
+import { OverQuotaToggle } from "@/components/dashboard/OverQuotaToggle";
+import { loadDashboardScope } from "@/lib/dashboard/scope";
+import { matrixYear, parseView, type DashboardParams, type DashboardView } from "@/lib/dashboard/filters";
+import { financeByMonth, withRatio } from "@/lib/dashboard/focFinance";
+import { loadAllowedProductLines } from "@/lib/dashboard/importSettings";
+import { loadDataThrough } from "@/lib/dashboard/dataThrough";
+import { periodLabel } from "@/lib/dashboard/period";
 import { FocActualsImportControl } from "@/components/dashboard/FocActualsImportControl";
+import { AccountsView } from "@/components/dashboard/AccountsView";
+import { AlertsView, type AlertListItem } from "@/components/dashboard/AlertsView";
+import { DashboardViewTabs } from "@/components/dashboard/DashboardViewTabs";
 import { FocActualsAccountTable } from "@/components/dashboard/FocActualsAccountTable";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { BarChart } from "@/components/dashboard/BarChart";
@@ -29,12 +36,13 @@ const revFocSeries = [
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; month?: string; ateam?: string; q?: string; hi?: string; xna?: string }>;
+  searchParams: Promise<DashboardParams>;
 }) {
   // Visible to every logged-in user regardless of role — this is a shared
   // reporting view, not an admin tool (praditww's explicit decision).
   const user = await requireUser();
-  const { year, month, ateam, q, hi, xna } = await searchParams;
+  const params = await searchParams;
+  const view = parseView(params.view);
 
   return (
     <div>
@@ -43,40 +51,28 @@ export default async function DashboardPage({
         Real nationwide sales/cost/FOC actuals, imported from Tableau.
       </p>
 
-      <ActualsContent isAdmin={user.role === "ADMIN"} year={year} month={month} ateam={ateam} q={q} hi={hi} xna={xna} />
+      <ActualsContent isAdmin={user.role === "ADMIN"} view={view} params={params} />
     </div>
   );
 }
 
-async function ActualsContent({
-  isAdmin,
-  year,
-  month,
-  ateam,
-  q,
-  hi,
-  xna,
-}: {
-  isAdmin: boolean;
-  year?: string;
-  month?: string;
-  ateam?: string;
-  q?: string;
-  hi?: string;
-  xna?: string;
-}) {
-  const allActuals = await prisma.focActual.findMany({
-    select: {
-      year: true, month: true, team: true, rep: true, accountName: true,
-      materialNo: true, productName: true, revenue: true, focCost: true, bonusCost: true,
-      soldQty: true, focQty: true, bonusQty: true,
-    },
-  });
+async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; view: DashboardView; params: DashboardParams }) {
+  const [allowedProductLines, dataThrough] = await Promise.all([loadAllowedProductLines(), loadDataThrough()]);
+  // The account picker (an exact dropdown, not free text — see
+  // ActualsFilters), the >20% toggle, the over-quota toggle and the "exclude
+  // N/A" toggle narrow the whole view (KPIs, panels, lists), not just one
+  // table — so the "N ship-to accounts" count and every figure on the page
+  // agree. "N/A" (non-finite ratio) accounts are common here — zero/negative
+  // revenue with real cost, e.g. samples/credits billed elsewhere — so
+  // excluding them is a separate toggle from ">20% only" (which, correctly,
+  // still counts an N/A account as a breach: an unbillable give-away is worse
+  // than 20%, not undefined for that purpose).
+  const { allActuals, years, accountNames, accountRows, facts, alerts } = await loadDashboardScope(params);
 
   if (allActuals.length === 0) {
     return (
       <div>
-        {isAdmin && <FocActualsImportControl />}
+        {isAdmin && <FocActualsImportControl allowedProductLines={allowedProductLines} dataThrough={dataThrough} />}
         <p className="py-12 text-center text-sm text-muted">
           No national actuals imported yet{isAdmin ? " — upload a file above to get started." : "."}
         </p>
@@ -84,41 +80,61 @@ async function ActualsContent({
     );
   }
 
-  const years = [...new Set(allActuals.map((f) => f.year))].sort((a, b) => b - a);
+  return (
+    <div>
+      {isAdmin && <FocActualsImportControl allowedProductLines={allowedProductLines} dataThrough={dataThrough} />}
 
-  // Exact period/team filters — this data is a periodic bulk import, not a
-  // live rolling window, so "year"/"month" pick a specific period rather
-  // than a "last N months" style filter.
-  const periodRows = allActuals.filter(
-    (f) =>
-      (!year || f.year === Number(year)) &&
-      (!month || f.month === Number(month)) &&
-      (!ateam || (f.team ?? "Unassigned") === ateam),
+      <p className="mb-3 text-xs text-muted">
+        {dataThrough.latest ? `Data through ${periodLabel(dataThrough.latest.year, dataThrough.latest.month)}` : "No data yet"}
+        {dataThrough.lastImport ? ` · last import ${new Date(dataThrough.lastImport.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} by ${dataThrough.lastImport.by}` : ""}
+      </p>
+
+      <DashboardViewTabs current={view} params={{ ...params }} />
+      <ActualsFilters view={view} years={years} accountNames={accountNames} accountCount={accountRows.length} />
+
+      {view === "accounts" && <AccountsContent params={params} years={years} accountRows={accountRows} />}
+      {view === "overview" && <OverviewContent accountRows={accountRows} facts={facts} />}
+      {view === "alerts" && <AlertsContent accountRows={accountRows} facts={facts} alerts={alerts} />}
+    </div>
   );
+}
 
-  // The account picker (an exact dropdown, not free text — see
-  // ActualsFilters), the >20% toggle, and the "exclude N/A" toggle narrow
-  // the whole tab (KPIs, both top-10 panels, the donut, by-team, and the
-  // table), not just the table — so the "N ship-to accounts" count and
-  // every figure on the page agree. "N/A" (non-finite ratio) accounts are
-  // common here — zero/negative revenue with real cost, e.g. samples/
-  // credits billed elsewhere — so excluding them is a separate toggle from
-  // ">20% only" (which, correctly, still counts an N/A account as a breach:
-  // an unbillable give-away is worse than 20%, not undefined for that
-  // purpose).
-  const allAccountRows = focAccountRows(periodRows as FocActualFact[]);
-  const accountNames = allAccountRows.map((a) => a.accountName).sort((a, b) => a.localeCompare(b));
-  const highRatioOnly = hi === "1";
-  const excludeNa = xna === "1";
-  const accountRows = allAccountRows.filter(
-    (a) =>
-      (!q || a.accountName === q) &&
-      (!highRatioOnly || a.ratio > 0.2) &&
-      (!excludeNa || Number.isFinite(a.ratio)),
+type Scope = Awaited<ReturnType<typeof loadDashboardScope>>;
+
+function AccountsContent({ params, years, accountRows }: { params: DashboardParams; years: number[]; accountRows: Scope["accountRows"] }) {
+  // Over-quota excess first, then total cost — the accounts that need a
+  // conversation lead the list.
+  const sorted = [...accountRows].sort((a, b) => b.overCost - a.overCost || b.totalCost - a.totalCost);
+  const exportParams = new URLSearchParams();
+  for (const key of ["year", "month", "mto", "ateam", "q", "hi", "xna", "sig", "top"] as const) {
+    if (params[key]) exportParams.set(key, params[key]);
+  }
+  return (
+    <AccountsView
+      rows={sorted}
+      year={matrixYear(params, years)}
+      measure={params.m === "cost" ? "cost" : "qty"}
+      exportQuery={exportParams.toString()}
+      openByDefault={Boolean(params.q)}
+    />
   );
-  const accountsInScope = new Set(accountRows.map((a) => a.accountName));
-  const facts = periodRows.filter((f) => accountsInScope.has(f.accountName));
+}
 
+function AlertsContent({ accountRows, facts, alerts }: { accountRows: Scope["accountRows"]; facts: Scope["facts"]; alerts: Scope["alerts"] }) {
+  // Team/rep per account: whichever appears on the most rows in scope.
+  const dominant = (name: string, pick: "team" | "rep"): string | null => {
+    const counts = new Map<string, number>();
+    for (const f of facts) if (f.accountName === name && f[pick]) counts.set(f[pick]!, (counts.get(f[pick]!) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  };
+  const items: AlertListItem[] = accountRows
+    .flatMap((a) => (alerts.get(a.accountName)?.items ?? []).map((i) => ({ ...i, accountName: a.accountName, team: dominant(a.accountName, "team"), rep: dominant(a.accountName, "rep") })))
+    .sort((a, b) => b.excessValue - a.excessValue);
+  const byTeam = focTeamBreakdown(facts).map((t) => ({ key: t.team, ...withRatio(t) }));
+  return <AlertsView items={items} byMonth={financeByMonth(facts)} byTeam={byTeam} />;
+}
+
+function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRows"]; facts: Scope["facts"] }) {
   // Drop empty months from display — praditww doesn't want zero-value
   // padding months cluttering the chart (the rolling 12-month window can
   // extend past whatever period was actually imported).
@@ -150,10 +166,6 @@ async function ActualsContent({
 
   return (
     <div>
-      {isAdmin && <FocActualsImportControl />}
-
-      <ActualsFilters years={years} accountNames={accountNames} accountCount={accountRows.length} />
-
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile label="Revenue" value={money(totalRevenue)} hint={`${totalSoldQty.toLocaleString()} units sold`} accent={REVENUE_COLOR} />
         <StatTile label="FOC cost" value={money(totalFocCost)} hint={`${totalFocQty.toLocaleString()} units given FOC`} accent={REVENUE_COLOR} />
@@ -236,7 +248,10 @@ async function ActualsContent({
       <Card className="mt-6 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-ink">Detail by ship-to account</h2>
-          <ExcludeNaToggle />
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <OverQuotaToggle />
+            <ExcludeNaToggle />
+          </div>
         </div>
         <FocActualsAccountTable rows={accountRows} />
       </Card>
