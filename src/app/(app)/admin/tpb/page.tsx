@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { TpbTable, type TpbEntryRow } from "@/components/admin/TpbTable";
+import { InstrumentUsageImportControl } from "@/components/admin/InstrumentUsageImportControl";
 
 export default async function AdminTpbPage() {
   await requireAdmin();
@@ -37,6 +38,7 @@ export default async function AdminTpbPage() {
         (see the elp-tpb-refresh workflow). A code with no entry here falls back to the
         floor value for its system. This directly changes BATCH-driver quantity math.
       </p>
+      <InstrumentUsageImportControl />
       <TpbTable
         initialEntries={entries as TpbEntryRow[]}
         initialSettings={settings}
