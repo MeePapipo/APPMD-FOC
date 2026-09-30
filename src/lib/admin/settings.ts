@@ -6,6 +6,9 @@ export const alertSettingsSchema = z
     overPct6800: z.number().min(0).max(1000),
     overPct5800: z.number().min(0).max(1000),
     minOverUnits: z.number().min(0).max(1000),
+    netOverPct: z.number().min(0).max(1000),
+    netMinExcess: z.number().min(0).max(100_000_000),
+    focStandaloneMin: z.number().min(0).max(100_000_000),
   })
   .partial();
 

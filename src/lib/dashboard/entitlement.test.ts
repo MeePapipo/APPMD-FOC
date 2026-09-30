@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alertPctFor, computeEntitlement, detectPlatform, isSignificantOver, type MaterialGiven } from "./entitlement";
+import { alertPctFor, computeEntitlement, detectPlatform, isSignificantOver, netVerdict, DEFAULT_ALERT, type MaterialGiven } from "./entitlement";
 import type { AssayLite, ItemLite } from "@/lib/calc/types";
 import type { TpbTableInput } from "@/lib/calc/tpb";
 
@@ -219,7 +219,7 @@ describe("computeEntitlement", () => {
 });
 
 describe("alert thresholds", () => {
-  const A = { overPct6800: 15, overPct5800: 20, minOverUnits: 1 };
+  const A = { ...DEFAULT_ALERT, overPct6800: 15, overPct5800: 20, minOverUnits: 1 };
 
   it("picks the platform's percentage; both = stricter, unknown = looser", () => {
     expect(alertPctFor("6800", A)).toBe(15);
@@ -240,5 +240,32 @@ describe("alert thresholds", () => {
   it("any give-away with no entitlement at all counts once it reaches the unit floor", () => {
     expect(isSignificantOver(1, 0, 15, 1)).toBe(true);
     expect(isSignificantOver(0, 0, 15, 1)).toBe(false);
+  });
+});
+
+describe("netVerdict (account-level Over Quota)", () => {
+  const A = { ...DEFAULT_ALERT, netOverPct: 25, netMinExcess: 20000, focStandaloneMin: 10000 }; // FOC threshold pinned here so the cases do not depend on the default
+
+  it("is over only when both the percentage and the THB excess are exceeded", () => {
+    expect(netVerdict(100000, 130000, 0, A).over).toBe(true); // +30%, 30k
+    expect(netVerdict(100000, 124000, 0, A).over).toBe(false); // +24%
+    expect(netVerdict(50000, 65000, 0, A).over).toBe(false); // +30% but only 15k
+    expect(netVerdict(100000, 120000, 0, A).over).toBe(false); // exactly 20k but 20% < 25%
+  });
+
+  it("an account given Bonus items with no entitlement at all is over once the THB floor is reached", () => {
+    expect(netVerdict(0, 25000, 0, A)).toMatchObject({ over: true, overPct: null });
+    expect(netVerdict(0, 5000, 0, A).over).toBe(false);
+  });
+
+  it("giving less than the entitlement is never over, however items are mixed", () => {
+    const v = netVerdict(141000, 62000, 0, A);
+    expect(v.over).toBe(false);
+    expect(v.excessValue).toBe(-79000);
+  });
+
+  it("flags stand-alone FOC on its own threshold, independent of the formula", () => {
+    expect(netVerdict(100, 50, 9999, A).focFlagged).toBe(false);
+    expect(netVerdict(100, 50, 10000, A).focFlagged).toBe(true);
   });
 });

@@ -46,7 +46,7 @@ export function FocActualsImportControl({ allowedProductLines, dataThrough }: { 
       // Let the "Reading" state paint before the synchronous parse blocks the page.
       await new Promise((resolve) => setTimeout(resolve, 30));
       const parsed = parseFocActualsCsv(new Uint8Array(await file.arrayBuffer()), { allowedProductLines });
-      if (parsed.rows.length === 0) throw new Error(`No rows for ${allowedProductLines.join(", ")} in this file.`);
+      if (parsed.rows.length === 0) throw new Error(`No rows for the Product ${allowedProductLines.join(", ")} in this file.`);
       setPreview({ fileName: file.name, parsed });
       setPhase("preview");
     } catch (cause) {
@@ -99,7 +99,7 @@ export function FocActualsImportControl({ allowedProductLines, dataThrough }: { 
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-ink">Import from Tableau (admin only)</p>
           <p className="text-xs text-muted">
-            Upload the &quot;Data for FOC&quot; crosstab export (one month, one or two years, any product lines). Only {allowedProductLines.join(", ")} rows are kept; rows already stored are skipped, so overlapping months are safe.
+            Upload the &quot;Data for FOC&quot; crosstab export (one or many months, one or two years, any Product). Only the Product {allowedProductLines.join(", ")} is kept, with every Item Group; rows already stored are skipped, so overlapping months are safe.
             {current ? ` Data currently runs through ${current}.` : " No data loaded yet."}
           </p>
         </div>
@@ -127,7 +127,7 @@ export function FocActualsImportControl({ allowedProductLines, dataThrough }: { 
             <strong>{preview.fileName}</strong> covers {describePeriods(preview.parsed.meta.periods)}: {preview.parsed.rows.length.toLocaleString()} row(s) kept.
           </p>
           <p className="mt-1 text-xs text-muted">
-            Left out: {preview.parsed.meta.excludedProductLine.toLocaleString()} other product line, {preview.parsed.meta.excludedTeam.toLocaleString()} by team, {preview.parsed.meta.excludedCategory.toLocaleString()} by category.
+            Left out: {preview.parsed.meta.excludedProductLine.toLocaleString()} row(s) of other Products, {preview.parsed.meta.excludedTeam.toLocaleString()} by Team, {preview.parsed.meta.excludedCategory.toLocaleString()} with no Item Group (hardware and unclassified).
           </p>
           <label className="mt-2 flex items-center gap-2 text-xs text-ink">
             <input type="checkbox" checked={updateChanged} onChange={(e) => setUpdateChanged(e.target.checked)} className="h-4 w-4 rounded border-line-strong accent-brand" disabled={busy} />

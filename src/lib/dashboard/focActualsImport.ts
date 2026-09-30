@@ -44,7 +44,6 @@ export const THAI_MONTHS: Record<string, number> = {
 };
 export const BE_OFFSET = 543;
 
-const KEEP_CATEGORIES = new Set(["Auxillaries", "Consumables", "Controls", "Reagents, kits"]);
 const REVENUE_CATEGORY = "Reagents, kits";
 const EXCLUDED_TEAMS = new Set(["TH - ThaiRedCross", "TH - TD", "TH - RCSC", "TH - FMI"]);
 
@@ -91,37 +90,48 @@ function decodeExport(buf: Uint8Array): string {
   throw new Error("อ่านไฟล์ไม่ออก — ต้องเป็น crosstab export จาก Tableau (UTF-16, tab-delimited)");
 }
 
-function splitRows(text: string): string[][] {
-  const delim = text.split("\n", 1)[0].includes("\t") ? "\t" : ",";
-  const rows: string[][] = [];
-  let row: string[] = [];
+/** One line into cells, honouring "quoted, cells" (Tableau quotes a cell only when it needs to). */
+function splitLine(line: string, delim: string): string[] {
+  const cells: string[] = [];
   let cell = "";
   let quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
     if (quoted) {
       if (ch === '"') {
-        if (text[i + 1] === '"') {
+        if (line[i + 1] === '"') {
           cell += '"';
           i++;
         } else quoted = false;
       } else cell += ch;
     } else if (ch === '"') quoted = true;
     else if (ch === delim) {
-      row.push(cell);
+      cells.push(cell);
       cell = "";
-    } else if (ch === "\n") {
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-    } else if (ch !== "\r") cell += ch;
+    } else cell += ch;
   }
-  if (cell !== "" || row.length) {
-    row.push(cell);
-    rows.push(row);
+  cells.push(cell);
+  return cells;
+}
+
+/**
+ * The first `n` cells of a line that has no quotes, without splitting the other
+ * ~280 cells: a file is tens of thousands of rows wide, and most rows belong to
+ * product lines that are dropped right after these identifying cells are read.
+ */
+function leadingFields(line: string, n: number, delim: string): string[] {
+  const out: string[] = [];
+  let pos = 0;
+  for (let k = 0; k < n; k++) {
+    const next = line.indexOf(delim, pos);
+    if (next === -1) {
+      out.push(line.slice(pos));
+      break;
+    }
+    out.push(line.slice(pos, next));
+    pos = next + 1;
   }
-  return rows;
+  return out;
 }
 
 const toNum = (s: string | undefined): number => {
@@ -147,6 +157,8 @@ export type FocActualRow = {
   month: number;
   team: string | null;
   rep: string | null;
+  /** Item Group (Tableau "Product Category Text"); null on rows stored before it was kept. */
+  category: string | null;
   accountName: string;
   materialNo: string;
   productName: string;
@@ -187,11 +199,16 @@ export type ParseResult = {
 
 export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}): ParseResult {
   const allowedPl3 = options.allowedProductLines ? new Set(options.allowedProductLines.map((x) => x.trim().toUpperCase())) : null;
-  const rows = splitRows(decodeExport(buf));
-  if (rows.length < 5) throw new Error("ไฟล์สั้นผิดปกติ — ไม่เหมือน crosstab export ของ Tableau");
-  const measureRow = rows[1];
-  const yearRow = rows[2];
-  const labelRow = rows[3];
+  const text = decodeExport(buf);
+  const delim = text.slice(0, Math.max(text.indexOf("\n"), 0)).includes("\t") ? "\t" : ",";
+  // Line by line, never holding the whole grid: a year of months for two years is ~170 MB.
+  const lines = text.split("\n");
+  while (lines.length > 0 && lines[lines.length - 1].replace(/\r$/, "") === "") lines.pop();
+  if (lines.length < 5) throw new Error("ไฟล์สั้นผิดปกติ — ไม่เหมือน crosstab export ของ Tableau");
+  const head = lines.slice(0, 4).map((l) => splitLine(l.replace(/\r$/, ""), delim));
+  const measureRow = head[1];
+  const yearRow = head[2];
+  const labelRow = head[3];
 
   // A period is one (year, month). A single pull can carry the same month for
   // two years side by side (2568 and 2569 columns), so columns are indexed by
@@ -222,7 +239,7 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
     .sort((a, b) => a.year - b.year || a.month - b.month);
   const year = periods.length ? Math.max(...periods.map((p) => p.year)) : null;
   const monthsInFile = [...new Set(periods.map((p) => p.month))].sort((a, b) => a - b);
-  const dataRows = rows.slice(4, -1);
+  const dataLines = lines.slice(4, -1); // the last line is the grand total
   const maxTotal = Math.max(...Object.values(totalIdx));
 
   const byKey = new Map<string, FocActualRow>();
@@ -230,12 +247,16 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
   let excludedCategory = 0;
   let excludedProductLine = 0;
 
-  for (const r of dataRows) {
-    if (r.length <= maxTotal) continue;
-    const tlevel3 = r[DIM.TLEVEL3];
-    const shipName = r[DIM.SHIPNAME] ? cleanName(r[DIM.SHIPNAME]) : "(ไม่ระบุ Ship-to)";
-    let category = r[DIM.CATEGORY];
-    if (allowedPl3 && !allowedPl3.has((r[DIM.PL3] ?? "").trim().toUpperCase())) {
+  for (const line of dataLines) {
+    const raw = line.endsWith("\r") ? line.slice(0, -1) : line;
+    if (!raw) continue;
+    const quoted = raw.indexOf('"') !== -1;
+    // d = the identifying cells; the full row is split only for rows that survive the filters.
+    const d = quoted ? splitLine(raw, delim) : leadingFields(raw, N_DIM, delim);
+    const tlevel3 = d[DIM.TLEVEL3];
+    const shipName = d[DIM.SHIPNAME] ? cleanName(d[DIM.SHIPNAME]) : "(ไม่ระบุ Ship-to)";
+    let category = d[DIM.CATEGORY] ?? "";
+    if (allowedPl3 && !allowedPl3.has((d[DIM.PL3] ?? "").trim().toUpperCase())) {
       excludedProductLine++;
       continue;
     }
@@ -243,13 +264,15 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
       excludedTeam++;
       continue;
     }
-    if (!KEEP_CATEGORIES.has(category)) {
-      if (category === "") category = classifyBlankCategory(r[DIM.PL6], r[DIM.PRODUCT]) ?? "";
-      if (!KEEP_CATEGORIES.has(category)) {
-        excludedCategory++;
-        continue;
-      }
+    // Every labelled Item Group is kept (the dashboard filters by it). A blank one is
+    // classified from the product name; hardware and unclassifiable products stay out.
+    if (category === "") category = classifyBlankCategory(d[DIM.PL6], d[DIM.PRODUCT]) ?? "";
+    if (category === "") {
+      excludedCategory++;
+      continue;
     }
+    const r = quoted ? d : raw.split(delim);
+    if (r.length <= maxTotal) continue;
     const tlevel6 = r[DIM.TLEVEL6] || "(ไม่ระบุ Rep)";
     const product = splitProduct(r[DIM.PRODUCT]);
     const isRevenue = category === REVENUE_CATEGORY;
@@ -287,6 +310,7 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
           month,
           team: tlevel3 || null,
           rep: tlevel6 || null,
+          category,
           accountName: shipName,
           materialNo: product.code,
           productName: product.name,

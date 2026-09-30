@@ -22,7 +22,15 @@ export type DashboardParams = {
   top?: string;
   /** Matrix measure: "cost", anything else = quantity. */
   m?: string;
+  /** Item Groups to include, "|"-separated ("Controls|Consumables"); absent = the default groups. */
+  ig?: string;
 };
+
+/** The Item Groups picked in the URL, or null for the default set. ("|" because a group name can contain a comma.) */
+export function parseItemGroups(ig: string | undefined): string[] | null {
+  const picked = (ig ?? "").split("|").map((x) => x.trim()).filter(Boolean);
+  return picked.length > 0 ? picked : null;
+}
 
 export const parseView = (v: string | undefined): DashboardView => (VIEWS as readonly string[]).includes(v ?? "") ? (v as DashboardView) : "accounts";
 

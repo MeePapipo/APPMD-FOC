@@ -8,7 +8,17 @@ export type ActualForGot = {
   bonusQty: number;
   focCost: number;
   bonusCost: number;
+  year?: number;
+  month?: number;
 };
+
+/** How far back stand-alone FOC is counted for the alert: a rolling window, not the account's lifetime. */
+export const FOC_ALERT_MONTHS = 12;
+
+/** The period index (year*12+month) the rolling window starts at, given the latest month with data. */
+export function recentFromPeriod(latest: { year: number; month: number } | null, months = FOC_ALERT_MONTHS): number | undefined {
+  return latest ? latest.year * 12 + latest.month - (months - 1) : undefined;
+}
 
 /**
  * "got" for the entitlement engine: one account's FocActual rows summed across
@@ -21,7 +31,7 @@ export type ActualForGot = {
  * (a credit/return), and for genuine reagent-kit rows the two are numerically
  * identical anyway (a reagent materialNo is always "Reagents, kits").
  */
-export function buildGot(rows: ActualForGot[]): Map<string, MaterialGiven> {
+export function buildGot(rows: ActualForGot[], recentFrom?: number): Map<string, MaterialGiven> {
   const got = new Map<string, MaterialGiven>();
   for (const r of rows) {
     const d = got.get(r.materialNo) ?? { sold: 0, foc: 0, bonus: 0, freeCost: 0, productName: r.productName };
@@ -29,6 +39,12 @@ export function buildGot(rows: ActualForGot[]): Map<string, MaterialGiven> {
     d.foc += r.focQty;
     d.bonus += r.bonusQty;
     d.freeCost += r.focCost + r.bonusCost;
+    d.focCost = (d.focCost ?? 0) + r.focCost;
+    d.bonusCost = (d.bonusCost ?? 0) + r.bonusCost;
+    if (recentFrom !== undefined && r.year !== undefined && r.month !== undefined) {
+      // Only the stand-alone FOC alert looks at this; the quota itself stays cumulative.
+      d.focCostRecent = (d.focCostRecent ?? 0) + (r.year * 12 + r.month >= recentFrom ? r.focCost : 0);
+    }
     got.set(r.materialNo, d);
   }
   return got;

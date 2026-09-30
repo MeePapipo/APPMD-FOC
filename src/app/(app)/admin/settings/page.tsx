@@ -23,6 +23,9 @@ export default async function AdminSettingsPage() {
       <AdminSettingsForm
         initial={{
           overPct6800: alert?.overPct6800 ?? DEFAULT_ALERT.overPct6800,
+          netOverPct: alert?.netOverPct ?? DEFAULT_ALERT.netOverPct,
+          netMinExcess: alert?.netMinExcess ?? DEFAULT_ALERT.netMinExcess,
+          focStandaloneMin: alert?.focStandaloneMin ?? DEFAULT_ALERT.focStandaloneMin,
           overPct5800: alert?.overPct5800 ?? DEFAULT_ALERT.overPct5800,
           minOverUnits: alert?.minOverUnits ?? DEFAULT_ALERT.minOverUnits,
           floorPct: Math.round((tpb?.accountFloorRatio ?? 0.5) * 100),

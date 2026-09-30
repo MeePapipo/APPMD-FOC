@@ -13,15 +13,20 @@ export function sameFigures(a: FocActualRow, b: FocActualRow): boolean {
   return NUMERIC.every((k) => a[k] === b[k]);
 }
 
-/** Same figures and same team/rep. */
+/** Same figures and same labels (team, rep, Item Group). */
 export function sameRow(a: FocActualRow, b: FocActualRow): boolean {
-  return sameFigures(a, b) && (a.team ?? null) === (b.team ?? null) && (a.rep ?? null) === (b.rep ?? null);
+  return (
+    sameFigures(a, b) &&
+    (a.team ?? null) === (b.team ?? null) &&
+    (a.rep ?? null) === (b.rep ?? null) &&
+    (a.category ?? null) === (b.category ?? null)
+  );
 }
 
 export type Classified = {
   fresh: FocActualRow[]; // not in the database yet
   unchanged: number; // already there, identical
-  /** Same key and figures, but the team/rep label moved (a rep reassignment): safe to refresh. */
+  /** Same key and figures, but a label moved (rep reassigned, or the Item Group was not stored yet): safe to refresh. */
   relabelled: FocActualRow[];
   changed: { row: FocActualRow; before: FocActualRow }[]; // same key, different figures
 };
@@ -31,9 +36,9 @@ export type Classified = {
  * (or two pulls can overlap) without double-counting: only `fresh` rows are
  * inserted by default. Tableau does revise past months (credits, returns), so
  * `changed` rows are reported rather than silently dropped or overwritten.
- * A row whose only difference is the team/rep label (the same sales, a rep
- * reassigned since the earlier pull) is `relabelled`: no figure moves, so the
- * label is simply refreshed.
+ * A row whose only difference is a label (team/rep: the same sales, a rep
+ * reassigned since the earlier pull; or an Item Group that was not stored on
+ * older imports) is `relabelled`: no figure moves, so the label is refreshed.
  */
 export function classifyRows(incoming: FocActualRow[], existing: FocActualRow[]): Classified {
   const stored = new Map(existing.map((r) => [focKey(r), r]));

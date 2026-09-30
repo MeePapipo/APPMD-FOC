@@ -7,10 +7,13 @@ type Values = {
   overPct6800: number;
   overPct5800: number;
   minOverUnits: number;
+  netOverPct: number;
+  netMinExcess: number;
+  focStandaloneMin: number;
   floorPct: number; // shown as a percentage, stored as a 0-1 ratio
   minRuns: number;
   windowMonths: number;
-  productLines: string; // comma-separated Tableau PL3 names
+  productLines: string; // comma-separated Product (Tableau PL3) names
 };
 
 const INPUT = "w-28 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm tabular-nums focus:border-brand focus:outline-none";
@@ -42,7 +45,7 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          alert: { overPct6800: Number(form.overPct6800), overPct5800: Number(form.overPct5800), minOverUnits: Number(form.minOverUnits) },
+          alert: { overPct6800: Number(form.overPct6800), overPct5800: Number(form.overPct5800), minOverUnits: Number(form.minOverUnits), netOverPct: Number(form.netOverPct), netMinExcess: Number(form.netMinExcess), focStandaloneMin: Number(form.focStandaloneMin) },
           tpb: { accountFloorRatio: Number(form.floorPct) / 100, accountMinRuns: Number(form.minRuns), accountWindowMonths: Number(form.windowMonths) },
           focImport: { allowedProductLines: form.productLines.split(",").map((x) => x.trim()).filter(Boolean) },
         }),
@@ -59,10 +62,24 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
 
   return (
     <form onSubmit={save} className="space-y-8">
-      <section aria-labelledby="alert-heading">
-        <h2 id="alert-heading" className="mb-1 text-sm font-semibold text-ink">Over-quota alert</h2>
+      <section aria-labelledby="net-heading">
+        <h2 id="net-heading" className="mb-1 text-sm font-semibold text-ink">Account over quota</h2>
         <p className="mb-4 max-w-2xl text-xs text-muted">
-          An item is flagged when the account has been given at least the minimum number of units above its
+          The main alert. An account is over quota when the Bonus it was given, valued at master prices, is more than its
+          whole entitlement by the percentage below <em>and</em> by at least the amount below. Items are added up first, so giving
+          more of one item and less of another is not flagged. Optional items (tubes, sample cups, third-party) are left out.
+        </p>
+        <div className="flex flex-wrap gap-x-8 gap-y-5">
+          <Field id="netpct" label="Bonus over entitlement by more than (%)" hint="25 means Bonus worth more than 125% of the entitlement." value={form.netOverPct} onChange={set("netOverPct")} step={1} max={1000} />
+          <Field id="netmin" label="and by at least (THB)" hint="Small absolute overshoots are ignored." value={form.netMinExcess} onChange={set("netMinExcess")} step={1000} max={100000000} />
+          <Field id="focmin" label="Stand-alone FOC flagged from (THB, last 12 months)" hint="FOC given with no reagent sale (it carries VAT) is not compared with the formula; an account is flagged once its FOC cost over the latest 12 months of data reaches this." value={form.focStandaloneMin} onChange={set("focStandaloneMin")} step={1000} max={100000000} />
+        </div>
+      </section>
+
+      <section aria-labelledby="alert-heading">
+        <h2 id="alert-heading" className="mb-1 text-sm font-semibold text-ink">Item Over Quota (information)</h2>
+        <p className="mb-4 max-w-2xl text-xs text-muted">
+          Shown on each item, not counted as an alert. An item is marked when the account has been given at least the minimum number of units above its
           entitlement <em>and</em> the excess is more than the percentage below of that entitlement. An item with no
           entitlement at all is flagged once it reaches the minimum units.
         </p>
@@ -88,12 +105,12 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
       </section>
 
       <section aria-labelledby="import-heading">
-        <h2 id="import-heading" className="mb-1 text-sm font-semibold text-ink">FOC import</h2>
+        <h2 id="import-heading" className="mb-1 text-sm font-semibold text-ink">FOC import: Products</h2>
         <p className="mb-4 max-w-2xl text-xs text-muted">
-          The Tableau export covers every product line in the company. Only rows whose product line (PL3) is listed
+          The Tableau export covers every Product (PL3: Molecular Lab, Core Lab, ...) in the company. Only rows whose Product is listed
           here are imported, so Core Lab or NPC rows never mix into the Molecular figures.
         </p>
-        <label htmlFor="lines" className="mb-1 block text-sm font-medium text-ink">Product lines to keep (comma-separated)</label>
+        <label htmlFor="lines" className="mb-1 block text-sm font-medium text-ink">Products to import (comma-separated)</label>
         <input id="lines" type="text" required value={form.productLines} onChange={(e) => set("productLines")(e.target.value)} className="w-full max-w-md rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:border-brand focus:outline-none" />
         <p className="mt-1 max-w-md text-xs text-muted">Names as Tableau writes them, e.g. MOLECULAR LAB. Not case sensitive.</p>
       </section>

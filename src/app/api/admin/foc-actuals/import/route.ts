@@ -15,6 +15,7 @@ const rowSchema = z.object({
   month: z.number().int().min(1).max(12),
   team: z.string().max(100).nullable(),
   rep: z.string().max(200).nullable(),
+  category: z.string().max(100).nullable(),
   accountName: z.string().min(1).max(300),
   materialNo: z.string().max(64),
   productName: z.string().min(1).max(300),
@@ -27,7 +28,7 @@ const bodySchema = z.object({
 });
 
 const SELECT = {
-  year: true, month: true, team: true, rep: true, accountName: true, materialNo: true, productName: true,
+  year: true, month: true, team: true, rep: true, category: true, accountName: true, materialNo: true, productName: true,
   revenue: true, revenueQty: true, soldQty: true, focCost: true, focQty: true, bonusCost: true, bonusQty: true, totalCost: true, tests: true,
 } as const;
 
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     await prisma.focActual.createMany({ data: fresh.slice(i, i + 1000), skipDuplicates: true });
   }
 
-  // Same figures, new team/rep label: always refreshed.
+  // Same figures, new team/rep/Item Group label: always refreshed.
   for (let i = 0; i < relabelled.length; i += 100) {
     await prisma.$transaction(
       relabelled.slice(i, i + 100).map((row) =>
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
               year: row.year, month: row.month, accountName: row.accountName, materialNo: row.materialNo, productName: row.productName,
             },
           },
-          data: { team: row.team, rep: row.rep },
+          data: { team: row.team, rep: row.rep, category: row.category },
         }),
       ),
     );

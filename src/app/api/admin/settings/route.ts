@@ -60,7 +60,7 @@ export async function PATCH(request: Request) {
     prisma.focImportSettings.findUnique({ where: { id: "singleton" } }),
   ]);
   return Response.json({
-    alert: alertNow ? { overPct6800: alertNow.overPct6800, overPct5800: alertNow.overPct5800, minOverUnits: alertNow.minOverUnits } : null,
+    alert: alertNow ? { overPct6800: alertNow.overPct6800, overPct5800: alertNow.overPct5800, minOverUnits: alertNow.minOverUnits, netOverPct: alertNow.netOverPct, netMinExcess: alertNow.netMinExcess, focStandaloneMin: alertNow.focStandaloneMin } : null,
     focImport: importNow ? { allowedProductLines: importNow.allowedProductLines } : null,
     tpb: tpbNow ? { accountFloorRatio: tpbNow.accountFloorRatio, accountMinRuns: tpbNow.accountMinRuns, accountWindowMonths: tpbNow.accountWindowMonths } : null,
   });

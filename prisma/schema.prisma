@@ -178,6 +178,16 @@ model AlertSettings {
   overPct6800  Float    @default(15) // % over the entitled qty, cobas 6800/8800 accounts
   overPct5800  Float    @default(20) // % over the entitled qty, cobas 5800 accounts
   minOverUnits Float    @default(1) // and at least this many units over
+  // Account-level rule: an account is "over quota" when the Bonus it was given
+  // (valued at master prices) exceeds its whole entitlement by more than
+  // `netOverPct` % AND by at least `netMinExcess` THB. Item-level excess is
+  // informational only (reps legitimately swap one item for another).
+  netOverPct       Float @default(25)
+  netMinExcess     Float @default(20000)
+  // Stand-alone FOC (no reagent sold with it, carries VAT) is not compared with
+  // the formula; an account is flagged when its FOC cost over the latest 12
+  // months reaches this many THB.
+  focStandaloneMin Float @default(100000)
   updatedAt    DateTime @updatedAt
 }
 
@@ -462,6 +472,7 @@ model FocActual {
   year        Int
   month       Int
   team        String? // TLevel3 from the source export
+  category    String? // "Item Group": Tableau Product Category Text (or classified by product name); null on rows imported before it was stored
   rep         String? // TLevel6 from the source export
   accountName String // Ship-to account name, cleaned (HOSP. -> HOSPITAL)
   materialNo  String // "" when the source row had no parseable "code - name" product string

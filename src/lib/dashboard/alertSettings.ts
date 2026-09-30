@@ -5,6 +5,9 @@ import { DEFAULT_ALERT, type AlertThresholds } from "./entitlement";
 export async function loadAlertThresholds(): Promise<AlertThresholds> {
   const row = await prisma.alertSettings.findUnique({ where: { id: "singleton" } });
   return row
-    ? { overPct6800: row.overPct6800, overPct5800: row.overPct5800, minOverUnits: row.minOverUnits }
+    ? {
+        overPct6800: row.overPct6800, overPct5800: row.overPct5800, minOverUnits: row.minOverUnits,
+        netOverPct: row.netOverPct, netMinExcess: row.netMinExcess, focStandaloneMin: row.focStandaloneMin,
+      }
     : DEFAULT_ALERT;
 }

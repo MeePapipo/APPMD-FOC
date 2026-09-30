@@ -3,7 +3,7 @@ import { classifyRows, focKey } from "./focActualsDiff";
 import type { FocActualRow } from "./focActualsImport";
 
 const row = (over: Partial<FocActualRow> = {}): FocActualRow => ({
-  year: 2026, month: 1, team: "TH - North", rep: "Rep A", accountName: "ACME (0052000001)", materialNo: "M1", productName: "Kit",
+  year: 2026, month: 1, team: "TH - North", rep: "Rep A", category: "Consumables", accountName: "ACME (0052000001)", materialNo: "M1", productName: "Kit",
   revenue: 100, revenueQty: 1, soldQty: 1, focCost: 10, focQty: 1, bonusCost: 5, bonusQty: 1, totalCost: 15, tests: 0, ...over,
 });
 
@@ -35,6 +35,12 @@ describe("classifyRows", () => {
     expect(out.relabelled).toHaveLength(1);
     expect(out.changed).toHaveLength(0);
     expect(out.unchanged).toBe(0);
+  });
+
+  it("an Item Group that was not stored before is refreshed as a relabel", () => {
+    const out = classifyRows([row()], [row({ category: null })]);
+    expect(out.relabelled).toHaveLength(1);
+    expect(out.changed).toHaveLength(0);
   });
 
   it("a different month or year is a different row", () => {

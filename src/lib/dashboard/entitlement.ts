@@ -73,7 +73,13 @@ const MARKERS_4800: Record<string, string> = {
   "06979602190": "cobas 4800 HCV 120T",
 };
 
-export type MaterialGiven = { sold: number; foc: number; bonus: number; freeCost: number; productName: string };
+export type MaterialGiven = {
+  sold: number; foc: number; bonus: number; freeCost: number; productName: string;
+  /** Cost of the stand-alone FOC / of the Bonus part of `freeCost` (absent on hand-built entries). */
+  focCost?: number; bonusCost?: number;
+  /** The part of `focCost` inside the alert window (set when the caller gave a window). */
+  focCostRecent?: number;
+};
 
 export type PlatformResult = { platform: string; basis: string; candidates: Sys658[]; has4800: boolean };
 
@@ -265,9 +271,45 @@ export type EntitlementRow = {
   significant: boolean;
 };
 
-/** Admin-tunable thresholds for `significant` (AlertSettings). */
-export type AlertThresholds = { overPct6800: number; overPct5800: number; minOverUnits: number };
-export const DEFAULT_ALERT: AlertThresholds = { overPct6800: 15, overPct5800: 20, minOverUnits: 1 };
+/** Admin-tunable thresholds (AlertSettings): item-level `significant` and the account-level net rule. */
+export type AlertThresholds = {
+  overPct6800: number; overPct5800: number; minOverUnits: number;
+  /** Account is over quota when Bonus value exceeds the entitled value by more than this %... */
+  netOverPct: number;
+  /** ...and by at least this many THB. */
+  netMinExcess: number;
+  /** Stand-alone FOC (no reagent sold with it) is flagged from this many THB. */
+  focStandaloneMin: number;
+};
+export const DEFAULT_ALERT: AlertThresholds = {
+  overPct6800: 15, overPct5800: 20, minOverUnits: 1, netOverPct: 25, netMinExcess: 20000, focStandaloneMin: 100000,
+};
+
+/** Account-level view: is the Bonus given, taken as a whole, more than the entitlement? */
+export type NetSummary = {
+  entitledValue: number; // formula entitlement at master prices (optional items left out)
+  bonusValue: number; // Bonus given on the same items, same prices
+  excessValue: number; // bonusValue - entitledValue (may be negative)
+  overPct: number | null; // excess as % of the entitlement, null when there is none
+  over: boolean; // beyond both the % and the THB threshold
+  focStandaloneCost: number; // cost of stand-alone FOC across everything given (last 12 months when the window is set)
+  focFlagged: boolean;
+};
+
+export function netVerdict(entitledValue: number, bonusValue: number, focStandaloneCost: number, a: AlertThresholds): NetSummary {
+  const excessValue = bonusValue - entitledValue;
+  const overPct = entitledValue > 0 ? (excessValue / entitledValue) * 100 : null;
+  const over = excessValue >= a.netMinExcess && (entitledValue <= 0 || (overPct as number) > a.netOverPct);
+  return {
+    entitledValue: Math.round(entitledValue),
+    bonusValue: Math.round(bonusValue),
+    excessValue: Math.round(excessValue),
+    overPct: overPct === null ? null : Math.round(overPct * 10) / 10,
+    over,
+    focStandaloneCost: Math.round(focStandaloneCost),
+    focFlagged: focStandaloneCost >= a.focStandaloneMin,
+  };
+}
 
 /**
  * Percentage that applies to an account's platform. A dual-platform account
@@ -295,6 +337,7 @@ export type EntitlementResult = {
     significantCount: number; // rows over quota beyond the alert thresholds
     significantCost: number; // their excess value
   };
+  net: NetSummary;
 };
 
 /**
@@ -344,6 +387,12 @@ export function computeEntitlement(
   const rows: EntitlementRow[] = [];
   const totals = { overCost: 0, withinCost: 0, noRuleCost: 0, reagentFreeCost: 0, wrongPlatformCost: 0, additionalCost: 0, significantCount: 0, significantCost: 0 };
   const alertPct = alertPctFor(platformInfo.platform, alert);
+  // Account-level net: formula items only (optional tubes, sample cups and the like are
+  // not tied to the formula), Bonus valued at master prices on both sides.
+  let entitledValue = 0;
+  let bonusValue = 0;
+  let focStandaloneCost = 0;
+  for (const d of got.values()) focStandaloneCost += d.focCostRecent ?? d.focCost ?? 0;
 
   const allMats = new Set<string>([...got.keys(), ...Object.keys(expectedAll)]);
   for (const mat of allMats) {
@@ -398,6 +447,11 @@ export function computeEntitlement(
       significant: over > 0 && isSignificantOver(over, exp, alertPct, alert.minOverUnits),
     };
     rows.push(row);
+    if (!row.optional) {
+      const unit = item?.price ?? (free ? d.freeCost / free : 0);
+      entitledValue += exp * unit;
+      bonusValue += d.bonus * unit;
+    }
     if (over > 0) totals.overCost += row.excessValue;
     else totals.withinCost += d.freeCost;
     if (row.significant) {
@@ -420,5 +474,5 @@ export function computeEntitlement(
     return { code, tests: r658?.tests[code] ?? res48.tests[code] ?? 0, batches: r658?.batches[code] ?? 0 };
   });
 
-  return { platform: platformInfo, assayTests, rows, totals };
+  return { platform: platformInfo, assayTests, rows, totals, net: netVerdict(entitledValue, bonusValue, focStandaloneCost, alert) };
 }
