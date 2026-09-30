@@ -13,7 +13,7 @@
  * month names), and a trailing grand-total row.
  */
 
-const DIM = { TLEVEL3: 0, TLEVEL6: 1, SHIPNUM: 3, SHIPNAME: 4, STATE: 5, PL6: 8, CATEGORY: 9, PRODUCT: 10 };
+const DIM = { TLEVEL3: 0, TLEVEL6: 1, SHIPNUM: 3, SHIPNAME: 4, STATE: 5, PL3: 6, PL6: 8, CATEGORY: 9, PRODUCT: 10 };
 const N_DIM = 11;
 const TOTAL_MEASURES = [
   "Quantity(Custom)",
@@ -28,7 +28,7 @@ const TOTAL_MEASURES = [
   "Total Cost",
   "Quota(Year)",
 ];
-const THAI_MONTHS: Record<string, number> = {
+export const THAI_MONTHS: Record<string, number> = {
   มกราคม: 1,
   กุมภาพันธ์: 2,
   มีนาคม: 3,
@@ -42,7 +42,7 @@ const THAI_MONTHS: Record<string, number> = {
   พฤศจิกายน: 11,
   ธันวาคม: 12,
 };
-const BE_OFFSET = 543;
+export const BE_OFFSET = 543;
 
 const KEEP_CATEGORIES = new Set(["Auxillaries", "Consumables", "Controls", "Reagents, kits"]);
 const REVENUE_CATEGORY = "Reagents, kits";
@@ -79,12 +79,14 @@ function classifyBlankCategory(pl6: string, productName: string): string | null 
  * HOSPITAL, including in join keys. */
 const cleanName = (n: string) => n.replace(/\bHOSP\./gi, "HOSPITAL").trim();
 
-function decodeExport(buf: Buffer): string {
+// Uint8Array (a Buffer is one) and TextDecoder, not Buffer, so the same parser
+// runs in the browser: the admin upload parses the ~30 MB export client-side.
+function decodeExport(buf: Uint8Array): string {
   // Tableau's crosstab export is UTF-16 LE with a BOM; older ones are UTF-8.
   if (buf[0] === 0xff && buf[1] === 0xfe) {
-    return buf.toString("utf16le").replace(/^﻿/, "");
+    return new TextDecoder("utf-16le").decode(buf).replace(/^﻿/, "");
   }
-  const text = buf.toString("utf8").replace(/^﻿/, "");
+  const text = new TextDecoder("utf-8").decode(buf).replace(/^﻿/, "");
   if (text.includes("ShipToAccountName")) return text;
   throw new Error("อ่านไฟล์ไม่ออก — ต้องเป็น crosstab export จาก Tableau (UTF-16, tab-delimited)");
 }
@@ -159,51 +161,84 @@ export type FocActualRow = {
   tests: number;
 };
 
-export type ParseResult = {
-  rows: FocActualRow[];
-  meta: { year: number | null; months: number[]; excludedTeam: number; excludedCategory: number };
+export type ParseOptions = {
+  /**
+   * Keep only rows whose PL3 (product line, e.g. "MOLECULAR LAB") is in this
+   * list. Undefined = keep every product line. The raw export covers the whole
+   * company; MD's dashboard must not mix in Core Lab or NPC rows.
+   */
+  allowedProductLines?: string[];
 };
 
-export function parseFocActualsCsv(buf: Buffer): ParseResult {
+export type ParseResult = {
+  rows: FocActualRow[];
+  meta: {
+    /** Latest year in the file (kept for older callers); a file can carry several. */
+    year: number | null;
+    /** Distinct months in the file, across all years (kept for older callers). */
+    months: number[];
+    /** Every (year, month) the file carries — one pull is one month for two years. */
+    periods: { year: number; month: number }[];
+    excludedTeam: number;
+    excludedCategory: number;
+    excludedProductLine: number;
+  };
+};
+
+export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}): ParseResult {
+  const allowedPl3 = options.allowedProductLines ? new Set(options.allowedProductLines.map((x) => x.trim().toUpperCase())) : null;
   const rows = splitRows(decodeExport(buf));
   if (rows.length < 5) throw new Error("ไฟล์สั้นผิดปกติ — ไม่เหมือน crosstab export ของ Tableau");
   const measureRow = rows[1];
   const yearRow = rows[2];
   const labelRow = rows[3];
 
+  // A period is one (year, month). A single pull can carry the same month for
+  // two years side by side (2568 and 2569 columns), so columns are indexed by
+  // period — indexing by month alone let the later year overwrite the earlier.
   const totalIdx: Record<string, number> = {};
-  const monthIdx: Record<string, Record<number, number>> = {};
-  for (const m of TOTAL_MEASURES) monthIdx[m] = {};
-  let yearBE: number | null = null;
+  const periodIdx: Record<string, Record<string, number>> = {};
+  for (const m of TOTAL_MEASURES) periodIdx[m] = {};
+  const periodKey = (year: number, month: number) => `${year}|${month}`;
   for (let i = N_DIM; i < measureRow.length; i++) {
     const measure = measureRow[i];
     if (!TOTAL_MEASURES.includes(measure)) continue;
     if (yearRow[i] === "รวม") {
       if (!(measure in totalIdx)) totalIdx[measure] = i;
     } else if (labelRow[i] in THAI_MONTHS) {
-      monthIdx[measure][THAI_MONTHS[labelRow[i]]] = i;
-      yearBE = yearBE || parseInt(yearRow[i], 10);
+      const yearBE = parseInt(yearRow[i], 10);
+      if (!Number.isFinite(yearBE)) continue;
+      periodIdx[measure][periodKey(yearBE - BE_OFFSET, THAI_MONTHS[labelRow[i]])] = i;
     }
   }
   const missing = TOTAL_MEASURES.filter((m) => !(m in totalIdx));
   if (missing.length) throw new Error("CSV ขาดคอลัมน์รวมที่ต้องมี: " + missing.join(", "));
-  const year = yearBE ? yearBE - BE_OFFSET : null;
 
-  const monthsInFile = Object.keys(monthIdx["Revenue(Custom)"])
-    .map(Number)
-    .sort((a, b) => a - b);
+  const periods = Object.keys(periodIdx["Revenue(Custom)"])
+    .map((k) => {
+      const [year, month] = k.split("|").map(Number);
+      return { year, month };
+    })
+    .sort((a, b) => a.year - b.year || a.month - b.month);
+  const year = periods.length ? Math.max(...periods.map((p) => p.year)) : null;
+  const monthsInFile = [...new Set(periods.map((p) => p.month))].sort((a, b) => a - b);
   const dataRows = rows.slice(4, -1);
   const maxTotal = Math.max(...Object.values(totalIdx));
 
   const byKey = new Map<string, FocActualRow>();
   let excludedTeam = 0;
   let excludedCategory = 0;
+  let excludedProductLine = 0;
 
   for (const r of dataRows) {
     if (r.length <= maxTotal) continue;
     const tlevel3 = r[DIM.TLEVEL3];
     const shipName = r[DIM.SHIPNAME] ? cleanName(r[DIM.SHIPNAME]) : "(ไม่ระบุ Ship-to)";
     let category = r[DIM.CATEGORY];
+    if (allowedPl3 && !allowedPl3.has((r[DIM.PL3] ?? "").trim().toUpperCase())) {
+      excludedProductLine++;
+      continue;
+    }
     if (!tlevel3 || /RED\s*CROSS/i.test(shipName) || EXCLUDED_TEAMS.has(tlevel3)) {
       excludedTeam++;
       continue;
@@ -219,18 +254,18 @@ export function parseFocActualsCsv(buf: Buffer): ParseResult {
     const product = splitProduct(r[DIM.PRODUCT]);
     const isRevenue = category === REVENUE_CATEGORY;
 
-    for (const month of monthsInFile) {
-      const soldQty = toNum(r[monthIdx["Selling Quantity"][month]]);
-      const revenue = isRevenue ? toNum(r[monthIdx["Revenue(Custom)"][month]]) : 0;
-      const focCost = toNum(r[monthIdx["FOC Cost"][month]]);
-      const focQty = toNum(r[monthIdx["FOC Quantity"][month]]);
-      const bonusCost = toNum(r[monthIdx["Bonus Cost"][month]]);
-      const bonusQty = toNum(r[monthIdx["Bonus Quantity"][month]]);
-      const tests = toNum(r[monthIdx["NumberOfTests(Custom)"][month]]);
-      const totalCost = toNum(r[monthIdx["Total Cost"][month]]);
+    for (const { year: resolvedYear, month } of periods) {
+      const k = periodKey(resolvedYear, month);
+      const soldQty = toNum(r[periodIdx["Selling Quantity"][k]]);
+      const revenue = isRevenue ? toNum(r[periodIdx["Revenue(Custom)"][k]]) : 0;
+      const focCost = toNum(r[periodIdx["FOC Cost"][k]]);
+      const focQty = toNum(r[periodIdx["FOC Quantity"][k]]);
+      const bonusCost = toNum(r[periodIdx["Bonus Cost"][k]]);
+      const bonusQty = toNum(r[periodIdx["Bonus Quantity"][k]]);
+      const tests = toNum(r[periodIdx["NumberOfTests(Custom)"][k]]);
+      const totalCost = toNum(r[periodIdx["Total Cost"][k]]);
       if (!(revenue || soldQty || focCost || focQty || bonusCost || bonusQty || tests || totalCost)) continue;
 
-      const resolvedYear = year ?? new Date().getFullYear();
       // Aggregate rather than overwrite: the source crosstab normally has one
       // row per (account, product), but if the same key ever repeats within
       // one file, summing is the safe behavior against the DB's unique key.
@@ -271,6 +306,6 @@ export function parseFocActualsCsv(buf: Buffer): ParseResult {
 
   return {
     rows: [...byKey.values()],
-    meta: { year, months: monthsInFile, excludedTeam, excludedCategory },
+    meta: { year, months: monthsInFile, periods, excludedTeam, excludedCategory, excludedProductLine },
   };
 }

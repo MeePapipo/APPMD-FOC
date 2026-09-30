@@ -154,3 +154,78 @@ describe("parseFocActualsCsv", () => {
     expect(() => parseFocActualsCsv(buf)).toThrow();
   });
 });
+
+// A real pull is one month for two years side by side, all product lines.
+type Period = { be: string; thai: string };
+function buildMultiCsv(periods: Period[], rows: { dims: string[]; values: MeasureValues[] }[]): Buffer {
+  const dimBlank = DIM_HEADERS.map(() => "");
+  const row0 = [...dimBlank], row1 = [...dimBlank], row2 = [...dimBlank], row3 = [...DIM_HEADERS];
+  for (const m of MEASURES) {
+    for (const p of periods) {
+      row0.push("Date"); row1.push(m); row2.push(p.be); row3.push(p.thai);
+    }
+    row0.push("Date"); row1.push(m); row2.push("รวม"); row3.push("รวม");
+  }
+  const body = rows.map(({ dims, values }) => {
+    const cells = [...dims];
+    for (const m of MEASURES) {
+      let total = 0;
+      values.forEach((v) => { const n = v[m] ?? 0; total += n; cells.push(String(n)); });
+      cells.push(String(total));
+    }
+    return cells;
+  });
+  const grand = [...dimBlank];
+  for (let i = 0; i < MEASURES.length * (periods.length + 1); i++) grand.push("0");
+  const text = [row0, row1, row2, row3, ...body, grand].map((r) => r.join("\t")).join("\n") + "\n";
+  return Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]);
+}
+
+const dims = (pl3: string, account: string, product: string) =>
+  ["TH - North", "Rep A", "", "1", account, "Bangkok", pl3, "", "PL6X", "Reagents, kits", product];
+
+describe("parseFocActualsCsv - several periods in one file", () => {
+  const periods: Period[] = [{ be: "2568", thai: "มกราคม" }, { be: "2569", thai: "มกราคม" }];
+  const csv = buildMultiCsv(periods, [
+    { dims: dims("MOLECULAR LAB", "ACME", "MAT1 - Kit"), values: [{ "Selling Quantity": 10, "Revenue(Custom)": 1000 }, { "Selling Quantity": 7, "Revenue(Custom)": 700, "FOC Quantity": 2, "FOC Cost": 50 }] },
+    { dims: dims("CORE LAB", "ACME", "MAT2 - Core"), values: [{ "Selling Quantity": 99, "Revenue(Custom)": 9900 }, { "Selling Quantity": 98, "Revenue(Custom)": 9800 }] },
+  ]);
+
+  it("keeps each year's figures under its own year instead of letting the later column win", () => {
+    const { rows, meta } = parseFocActualsCsv(csv);
+    expect(meta.periods).toEqual([{ year: 2025, month: 1 }, { year: 2026, month: 1 }]);
+    const mat1 = rows.filter((r) => r.materialNo === "MAT1");
+    expect(mat1.find((r) => r.year === 2025)).toMatchObject({ soldQty: 10, revenue: 1000, focQty: 0 });
+    expect(mat1.find((r) => r.year === 2026)).toMatchObject({ soldQty: 7, revenue: 700, focQty: 2, focCost: 50 });
+  });
+
+  it("does not depend on which year comes first", () => {
+    const flipped = buildMultiCsv([...periods].reverse(), [
+      { dims: dims("MOLECULAR LAB", "ACME", "MAT1 - Kit"), values: [{ "Selling Quantity": 7 }, { "Selling Quantity": 10 }] },
+    ]);
+    const { rows } = parseFocActualsCsv(flipped);
+    expect(rows.find((r) => r.year === 2026)?.soldQty).toBe(7);
+    expect(rows.find((r) => r.year === 2025)?.soldQty).toBe(10);
+  });
+
+  it("keeps every product line unless a filter is given", () => {
+    expect(parseFocActualsCsv(csv).rows.map((r) => r.materialNo).sort()).toEqual(["MAT1", "MAT1", "MAT2", "MAT2"]);
+  });
+
+  it("keeps only the allowed product lines and counts what it dropped", () => {
+    const { rows, meta } = parseFocActualsCsv(csv, { allowedProductLines: ["molecular lab"] });
+    expect(rows.every((r) => r.materialNo === "MAT1")).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(meta.excludedProductLine).toBe(1); // one CORE LAB row (it fills both years)
+  });
+
+  it("reads several months of several years", () => {
+    const multi = buildMultiCsv(
+      [{ be: "2568", thai: "มกราคม" }, { be: "2568", thai: "กุมภาพันธ์" }, { be: "2569", thai: "มกราคม" }, { be: "2569", thai: "กุมภาพันธ์" }],
+      [{ dims: dims("MOLECULAR LAB", "ACME", "MAT1 - Kit"), values: [{ "FOC Quantity": 1 }, { "FOC Quantity": 2 }, { "FOC Quantity": 3 }, { "FOC Quantity": 4 }] }],
+    );
+    const { rows, meta } = parseFocActualsCsv(multi);
+    expect(meta.months).toEqual([1, 2]);
+    expect(rows.map((r) => `${r.year}-${r.month}:${r.focQty}`).sort()).toEqual(["2025-1:1", "2025-2:2", "2026-1:3", "2026-2:4"]);
+  });
+});
