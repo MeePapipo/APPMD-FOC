@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NAV_HOVER } from "@/lib/hoverStyles";
 
-type NavUser = { name?: string | null; email?: string | null; role: "USER" | "ADMIN" };
+type NavUser = { name?: string | null; email?: string | null; role: "USER" | "ADMIN"; canChangePassword?: boolean };
 
 const links = [
   { href: "/calculator", label: "Calculator" },
@@ -23,6 +23,7 @@ export function AppNav({ user }: { user: NavUser }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const items = user.role === "ADMIN" ? [...links, { href: "/admin", label: "Admin" }] : links;
+  const mobileItems = user.canChangePassword ? [...items, { href: "/change-password", label: "Change password" }] : items;
 
   // The active mark is the same idea as the category rule on the order
   // screen (a full-strength brand-colour edge, not a filled pill) — rotated
@@ -86,6 +87,11 @@ export function AppNav({ user }: { user: NavUser }) {
             </div>
           </div>
           <ThemeToggle />
+          {user.canChangePassword && (
+            <Link href="/change-password" className="hidden text-sm font-medium text-muted hover:text-ink md:inline">
+              Change password
+            </Link>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -110,7 +116,7 @@ export function AppNav({ user }: { user: NavUser }) {
 
       {open && (
         <nav id="mobile-nav" className="flex flex-col gap-1 border-t border-line py-2 md:hidden">
-          {items.map((i) => (
+          {mobileItems.map((i) => (
             <MobileNavLink key={i.href} {...i} />
           ))}
         </nav>

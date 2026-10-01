@@ -8,8 +8,9 @@ import { generateTempPassword } from "@/lib/generateTempPassword";
  * so there's no self-service "forgot password" link (praditww's explicit
  * choice over building one, 2026-09-29). An admin generates a fresh
  * temporary password here and relays it to the rep out of band (chat,
- * phone); the rep signs in with it like any other password — no forced
- * change-on-first-login flow, matching the scope actually asked for.
+ * phone). The account is marked `mustChangePassword`, so the rep's first
+ * sign-in lands on /change-password and the temporary password stops being
+ * usable once they pick their own.
  */
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireApiAdmin();
@@ -21,7 +22,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const tempPassword = generateTempPassword();
   const passwordHash = await bcrypt.hash(tempPassword, 10);
-  await prisma.user.update({ where: { id }, data: { passwordHash } });
+  await prisma.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true } });
 
   // Never log the password itself — only that a reset happened and by whom.
   await prisma.auditLog.create({

@@ -278,6 +278,7 @@ model User {
   name         String?
   role         Role     @default(USER)
   passwordHash String? // null for Entra/dev-only users; set for self-registered + seeded admin
+  mustChangePassword Boolean @default(false) // set when an admin issues a temporary password; cleared once the user picks their own
   team         Team? // profile label / dashboard filter only, never an access boundary
   active       Boolean  @default(true) // deactivated accounts are blocked at login (src/auth.ts authorize())
   lastLoginAt  DateTime? // bumped once per real sign-in in src/auth.ts's jwt callback
