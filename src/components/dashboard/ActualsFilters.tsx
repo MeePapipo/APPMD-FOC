@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { cn } from "@/lib/cn";
 import { ALL_YEARS } from "@/lib/dashboard/filters";
 import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
@@ -79,12 +79,16 @@ export function ActualsFilters({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  // The figures are computed on the server, so a filter click takes a moment. Keep the page where it is
+  // (scroll: false) and dim the bar while the new figures load, instead of jumping.
+  const [pending, startTransition] = useTransition();
+  const go = (params: URLSearchParams) => startTransition(() => router.push(`${pathname}?${params.toString()}`, { scroll: false }));
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (value) params.set(key, value);
     else params.delete(key);
-    router.push(`${pathname}?${params.toString()}`);
+    go(params);
   }
 
   // Another Product has other accounts and Item Groups, so the account, Item Group and flag picks do not carry over.
@@ -93,7 +97,7 @@ export function ActualsFilters({
     if (value && value !== defaultProduct) params.set("pl3", value);
     else params.delete("pl3");
     for (const k of ["acct", "ig", "sig", "q"]) params.delete(k);
-    router.push(`${pathname}?${params.toString()}`);
+    go(params);
   }
 
   const annual = quotaMode === "annual";
@@ -102,7 +106,7 @@ export function ActualsFilters({
   const measure = get("m") === "cost" ? "cost" : "qty";
 
   return (
-    <div className="mb-6 space-y-3">
+    <div className={cn("mb-6 space-y-3 transition-opacity", pending && "opacity-60")} aria-busy={pending}>
       <div className="flex flex-wrap items-center gap-3">
         <select aria-label="Product" value={product} onChange={(e) => setProduct(e.target.value)} className={selectClass}>
           {(productChoices.includes(product) ? productChoices : [product, ...productChoices]).map((p) => (

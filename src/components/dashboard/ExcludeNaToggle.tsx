@@ -16,7 +16,8 @@ export function ExcludeNaToggle() {
     const params = new URLSearchParams(searchParams.toString());
     if (checked) params.set("xna", "1");
     else params.delete("xna");
-    router.push(`${pathname}?${params.toString()}`);
+    // scroll: false keeps the page where it is instead of jumping while the new figures load.
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
   return (

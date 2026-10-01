@@ -13,7 +13,8 @@ export function OverQuotaToggle() {
     const params = new URLSearchParams(searchParams.toString());
     if (checked) params.set("sig", "1");
     else params.delete("sig");
-    router.push(`${pathname}?${params.toString()}`);
+    // scroll: false keeps the page where it is instead of jumping while the new figures load.
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
   return (
