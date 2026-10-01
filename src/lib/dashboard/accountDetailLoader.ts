@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { loadEngineData } from "@/lib/calc/service";
-import { alertPctFor, computeEntitlement, overSeverity } from "./entitlement";
+import { computeEntitlement } from "./entitlement";
 import type { EntitlementLite } from "./focExports";
 import { accountNumberFromName, buildGot, reagentBillMonths, recentFromPeriod } from "./accountGiven";
 import { loadDataThrough } from "./dataThrough";
@@ -77,20 +77,23 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     ? computeEntitlement(new Map(), assays, items, additionalMats, tpbInput, alert)
     : computeEntitlement(buildGot(allRows.filter((r) => inItemGroups(r.category, null)), recentFromPeriod(through.latest)), assays, items, additionalMats, tpbInput, alert, reagentBillMonths(allRows));
 
-  // Quota earned in a calendar year = the cumulative quota at that year's end minus the cumulative
-  // quota at the end of the year before (no rounding jump at New Year; the years add up to the
-  // cumulative figure). "Given" is what went out in that year, so a year reads Quota vs YTD.
+  // Everything below works on one calendar year at a time: the quota is what that year's reagent sales earn
+  // (rounded once on the year's total, with the account's own TPB) and "given" is what went out in that year,
+  // so the matrix, the quota table, the summary tiles and the Calculator's allowance all read the same figures.
+  // (A year-to-year "delta of cumulative" quota would make the years add up exactly, but it gave the matrix
+  // a different number from the quota table for the same item.)
   const defaultRows = allRows.filter((r) => inItemGroups(r.category, null));
-  const yearsAsc = [...new Set(allRows.map((r) => r.year))].sort((a, b) => a - b);
   const ruleMats = new Set(entitlement.rows.filter((r) => r.bucket === "over" || r.bucket === "within").map((r) => r.materialNo));
-  const cumulative = new Map<number, Record<string, number>>();
-  for (const y of yearsAsc) {
-    const upTo = defaultRows.filter((r) => r.year * 12 + r.month <= y * 12 + 12);
-    const expected: Record<string, number> = {};
-    for (const row of computeEntitlement(buildGot(upTo), assays, items, additionalMats, tpbInput, alert).rows) expected[row.materialNo] = row.expected;
-    cumulative.set(y, expected);
-  }
-  const alertPct = alertPctFor(entitlement.platform.platform, alert);
+
+  // The whole entitlement (quota rows, net summary, stand-alone FOC) for one calendar year; null = every loaded month.
+  const entitlementForYear = (year: number | null) => {
+    const inYear = (r: { year: number }) => year === null || r.year === year;
+    return computeEntitlement(
+      buildGot(defaultRows.filter(inYear), year === null ? recentFromPeriod(through.latest) : undefined),
+      assays, items, additionalMats, tpbInput, alert, reagentBillMonths(allRows.filter(inYear)),
+    );
+  };
+
   const yearQuotaFor = (year: number): Record<string, YearQuota> => {
     if (annualMode) {
       // The quota is the yearly figure Tableau holds; given = FOC + Bonus in the year.
@@ -100,32 +103,14 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
       }
       return out;
     }
-    const before = [...yearsAsc].reverse().find((y) => y < year);
-    const prev = before === undefined ? {} : cumulative.get(before)!;
-    const now = cumulative.get(year) ?? {};
-    const yearRows = defaultRows.filter((r) => r.year === year);
-    const given = buildGot(yearRows);
-    // +1 of an item is accepted per reagent bill of that year.
-    const bills = reagentBillMonths(allRows.filter((r) => r.year === year));
     const out: Record<string, YearQuota> = {};
-    for (const mat of ruleMats) {
-      const quota = Math.max(0, (now[mat] ?? 0) - (prev[mat] ?? 0));
-      const g = given.get(mat);
-      const focQty = g?.foc ?? 0, bonusQty = g?.bonus ?? 0, free = focQty + bonusQty;
-      const severity = overSeverity(free - quota, quota, bills, alertPct, alert.minOverUnits);
-      out[mat] = { quota, free, focQty, bonusQty, significant: severity === "critical", warning: severity === "warning" };
+    for (const row of entitlementForYear(year).rows) {
+      if (row.bucket !== "over" && row.bucket !== "within") continue; // only items with a quota rule
+      out[row.materialNo] = { quota: row.expected, free: row.free, focQty: row.focQty, bonusQty: row.bonusQty, significant: row.significant, warning: row.severity === "warning" };
     }
+    // An item with a rule that earned and was given nothing this year (e.g. given only last year) still has a quota of 0.
+    for (const mat of ruleMats) if (!out[mat]) out[mat] = { quota: 0, free: 0, focQty: 0, bonusQty: 0, significant: false, warning: false };
     return out;
-  };
-
-  // The whole entitlement (quota rows, net summary, stand-alone FOC) for one calendar year, so the summary
-  // tiles and the quota table cover the same period as the matrix and the cost figures; null = every loaded month.
-  const entitlementForYear = (year: number | null) => {
-    const inYear = (r: { year: number }) => year === null || r.year === year;
-    return computeEntitlement(
-      buildGot(defaultRows.filter(inYear), year === null ? recentFromPeriod(through.latest) : undefined),
-      assays, items, additionalMats, tpbInput, alert, reagentBillMonths(allRows.filter(inYear)),
-    );
   };
 
   // Pack size per reagent material (6800 and 5800 share material numbers and sizes), for boxes -> tests.
