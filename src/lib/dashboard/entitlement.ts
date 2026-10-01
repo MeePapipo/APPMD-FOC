@@ -294,8 +294,8 @@ export type EntitlementRow = {
   significant: boolean;
   /**
    * How far over quota, judged per bill: each reagent bill is allowed +1 of an item as extra Bonus, so
-   * over > bills is "critical" (red) and 1..bills is "warning" (yellow). The percentage rule above stays
-   * as an extra route to critical. `significant` is true exactly when this is "critical". Null = not over.
+   * over > bills is "critical" (red) and 1..bills is "warning" (yellow). The percentage rule above is only
+   * used when the bill count is unknown. `significant` is true exactly when this is "critical". Null = not over.
    */
   severity: "critical" | "warning" | null;
 };
@@ -352,12 +352,15 @@ export function alertPctFor(platform: string, a: AlertThresholds): number {
   return a.overPct6800; // 6800 and 4800
 }
 
-/** Per-bill severity: +1 per bill is accepted (yellow), more than that is critical; the % rule can also make it critical. */
+/**
+ * Per-bill severity: +1 of an item per reagent bill is accepted, so over quota by up to the number of bills is a
+ * yellow warning and more than that is critical (red). The % thresholds are only the fallback when the bill count is
+ * unknown (`bills` null): they decide red there, and any other excess is yellow.
+ */
 export function overSeverity(over: number, expected: number, bills: number | null, pct: number, minOverUnits: number): "critical" | "warning" | null {
   if (over <= 0) return null;
-  const pctCritical = isSignificantOver(over, expected, pct, minOverUnits);
-  if (bills === null) return pctCritical ? "critical" : "warning";
-  return over > bills || pctCritical ? "critical" : "warning";
+  if (bills === null) return isSignificantOver(over, expected, pct, minOverUnits) ? "critical" : "warning";
+  return over > bills ? "critical" : "warning";
 }
 
 export function isSignificantOver(over: number, expected: number, pct: number, minOverUnits: number): boolean {

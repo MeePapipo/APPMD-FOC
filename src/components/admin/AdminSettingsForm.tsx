@@ -84,8 +84,8 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
         <h2 id="alert-heading" className="mb-1 text-sm font-semibold text-ink">Item Over Quota (information)</h2>
         <p className="mb-4 max-w-2xl text-xs text-muted">
           Shown on each item, not counted as an alert. Each reagent bill (a month with reagent sales) is allowed +1 of an item as extra Bonus: over quota by no more than the
-          number of bills is a yellow Warning, over by more than that is a red Over Quota. The percentage below is a second route to red: an item is also red when the
-          excess is at least the minimum number of units <em>and</em> more than that percentage of its entitlement. Set the percentage very high to rely on the bill rule alone.
+          number of bills is a yellow Warning, over by more than that is a red Over Quota. The percentage below is used only when an account&apos;s bill count is unknown (no reagent sales in the period): then an item is red when the
+          excess is at least the minimum number of units <em>and</em> more than that percentage of its entitlement, and yellow otherwise.
         </p>
         <div className="flex flex-wrap gap-x-8 gap-y-5">
           <Field id="pct6800" label="cobas 6800/8800: over by more than (%)" hint="Also used for cobas 4800. An account with both platforms uses the lower of the two percentages." value={form.overPct6800} onChange={set("overPct6800")} step={0.5} max={1000} />

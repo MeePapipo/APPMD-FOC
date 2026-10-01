@@ -283,8 +283,9 @@ describe("overSeverity: +1 extra Bonus accepted per reagent bill", () => {
   it("is critical beyond the number of bills", () => {
     expect(overSeverity(4, 321, 3, 1000, 1)).toBe("critical");
   });
-  it("lets the percentage rule raise a small overshoot to critical", () => {
-    expect(overSeverity(2, 4, 10, 15, 1)).toBe("critical");
+  it("ignores the percentage when the bill count is known (+6 on a quota of 8 with 8 bills is still yellow)", () => {
+    expect(overSeverity(6, 8, 8, 15, 1)).toBe("warning");
+    expect(overSeverity(2, 4, 10, 15, 1)).toBe("warning");
   });
   it("without a bill count falls back to the percentage rule", () => {
     expect(overSeverity(36, 321, null, 15, 1)).toBe("warning");

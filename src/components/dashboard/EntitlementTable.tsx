@@ -109,18 +109,6 @@ export function EntitlementTable({ entitlement, period = null }: { entitlement: 
   return (
     <div>
       <h3 className="mb-1 text-sm font-semibold text-ink">Quota เท่าไร vs แถมจริงเท่าไร</h3>
-      <p className="mb-1 text-xs text-muted">
-        รุ่นเครื่องที่ใช้คิด: cobas {entitlement.platform.platform.replace("+4800", "")}
-        {entitlement.platform.has4800 && " + cobas 4800"} · {entitlement.platform.basis}
-      </p>
-      {entitlement.assayTests.length > 0 && (
-        <p className="mb-1 text-xs text-muted">
-          น้ำยาหลักที่ส่งจริง:{" "}
-          {entitlement.assayTests
-            .map((a) => `${a.code} ${a.tests.toLocaleString()} tests${a.batches > 0 ? ` (${a.batches.toLocaleString()} batches)` : ""}`)
-            .join(" · ")}
-        </p>
-      )}
       <p className="mb-1 text-xs text-muted">{period ? `เฉพาะปี ${period}` : "ครอบคลุมทั้งช่วงข้อมูล"} ไม่ขึ้นกับตัวกรองเดือน · จำนวนเป็นกล่อง</p>
       {typeof entitlement.bills === "number" && (
         <p className="mb-3 text-xs text-muted">
@@ -165,7 +153,15 @@ export function EntitlementTable({ entitlement, period = null }: { entitlement: 
                         {b.title} · {rows.length} รายการ · {b.hint}
                       </button>
                     </td>
-                    <td className="py-2 pl-3 pr-3 text-right font-semibold text-ink">฿{money(total)}</td>
+                    <td className="py-2 pl-3 pr-3 text-right font-semibold text-ink">
+                      ฿{money(total)}
+                      {b.key === "over" && entitlement.totals.significantCost > 0 && entitlement.totals.significantCost < total && (
+                        // The Accounts list's "Over Quota" figure is the red part only; show both so the two tie out.
+                        <span className="block text-[11px] font-normal text-muted" title="Red = beyond +1 per bill (the figure on the Accounts list); yellow = within it">
+                          <span className="text-negative">แดง ฿{money(entitlement.totals.significantCost)}</span> · <span className="text-warning">เหลือง ฿{money(total - entitlement.totals.significantCost)}</span>
+                        </span>
+                      )}
+                    </td>
                   </tr>
                   {isOpen &&
                     rows.map((r) => {
