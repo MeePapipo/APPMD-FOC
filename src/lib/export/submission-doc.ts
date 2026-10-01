@@ -195,6 +195,8 @@ export async function loadSubmissionDoc(
   });
   if (!submission) return null;
   if (user.role !== "ADMIN" && submission.createdByEmail !== user.email) return null;
+  // Cleared (VOID) orders are hidden from reps; an admin can still open them, e.g. before restoring.
+  if (submission.status === "VOID" && user.role !== "ADMIN") return null;
 
   // group/packText/dkshCode are display-only master fields that SubmissionLine
   // does not snapshot, so they are joined back by materialNo. A SKU shared
