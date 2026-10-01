@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { AccountDTO, AdditionalFocDTO, AssayDTO } from "@/lib/dto";
 import type { SysCode, TestsBySystem } from "@/lib/calc/types";
 import { computeReagents } from "@/lib/calc/reagents";
@@ -49,6 +49,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
   // Free-choice give-aways. Independent of the engine, so editing them does
   // not make the calculated preview stale.
   const [manualQty, setManualQty] = useState<ManualQuantities>({});
+  const [pickerKey, setPickerKey] = useState(0);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +100,25 @@ export function Calculator({ accounts, assays, additionalFoc }: {
   const accountNotices = (preview?.tpbNotices ?? []).filter((n) => n.kind === "account");
 
   const selected = preview ? selectPreview(preview, optionalTicked, adjustments, manualLines) : null;
+
+  // Anything worth losing: an account, a reagent line, a calculated preview or a free-choice give-away.
+  const hasInput = !!account || selectedLines.length > 0 || !!preview || Object.keys(manualQty).length > 0;
+
+  // Back to an empty order (account, reagents, adjustments, free-choice give-aways) so the rep can start again.
+  function resetOrder() {
+    if (requestInFlight.current || busy) return;
+    if (hasInput && !window.confirm("Clear the account and everything entered on this order, and start again?")) return;
+    setAccount(null);
+    setLines([{ id: nextLineId.current++, system: "6800", code: "", boxes: "" }]);
+    setPreview(null);
+    setStale(false);
+    setOptionalTicked({});
+    setAdjustments({});
+    setManualQty({});
+    setError(null);
+    setPickerKey((key) => key + 1); // the picker keeps its own search text, so it is rebuilt
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   function invalidatePreview() {
     setStale(true);
@@ -208,9 +228,14 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 
   return (
     <div className="min-w-0 space-y-6">
+      <div className="flex justify-end">
+        <Button type="button" variant="ghost" size="sm" onClick={resetOrder} disabled={busy || !hasInput} className="text-muted hover:text-ink">
+          <RotateCcw className="h-4 w-4" aria-hidden="true" /> Reset order
+        </Button>
+      </div>
       <fieldset disabled={busy} className="min-w-0 border-b border-line pb-5">
         <legend className="mb-3 text-sm font-medium text-ink">1. Account</legend>
-        <AccountPicker accounts={accounts} value={account} onChange={(value) => {
+        <AccountPicker key={pickerKey} accounts={accounts} value={account} onChange={(value) => {
           if (requestInFlight.current) return;
           setAccount(value);
           invalidatePreview();
@@ -378,6 +403,9 @@ export function Calculator({ accounts, assays, additionalFoc }: {
           recalculating is then the only sensible next step, so confirming is
           disabled until it happens. */}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-5">
+        <Button type="button" variant="ghost" onClick={resetOrder} disabled={busy || !hasInput} className="mr-auto text-muted hover:text-ink">
+          <RotateCcw className="h-4 w-4" aria-hidden="true" /> Reset order
+        </Button>
         {missingComment && !stale && (
           <p role="status" className="text-sm text-negative">
             Add a comment for every adjusted quantity before confirming.
