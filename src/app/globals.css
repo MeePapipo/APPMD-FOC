@@ -45,7 +45,50 @@
   --cat-common-edge: #9b5400;
   --cat-additional-edge: #c25e00;
   --cat-choice-edge: #7b2fb5;
+
+  --chart-revenue: #0b41cd;
+  --chart-foc: #eb6834;
 }
+
+/*
+ * Dark theme: the same token names, re-valued. Light stays the default; the
+ * toggle in the nav sets data-theme="dark" on <html> (see ThemeToggle and the
+ * inline script in layout.tsx). --brand is a lighter blue than Roche Blue so it
+ * keeps contrast as text and as a button on the dark surfaces.
+ */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --brand: #4a78f5;
+  --brand-dark: #3560e0;
+  --brand-tint: #17213f;
+  --ink: #ececea;
+  --muted: #a8a3a0;
+  --line: #34312f;
+  --line-strong: #4b4744;
+  --surface: #1c1b1a;
+  --canvas: #121110;
+  --positive: #4cc38a;
+  --positive-tint: #12281d;
+  --warning: #e0a050;
+  --warning-tint: #2b2012;
+  --negative: #ff6b7d;
+  --negative-tint: #2e1519;
+  --chart-revenue: #6f93ff;
+  --chart-foc: #f0875f;
+
+  --cat-reagent: #15223d;
+  --cat-qc: #14261b;
+  --cat-common: #2a2412;
+  --cat-additional: #2c1f12;
+  --cat-choice: #261a38;
+  --cat-reagent-edge: #6f93ff;
+  --cat-qc-edge: #4cc38a;
+  --cat-common-edge: #e0a050;
+  --cat-additional-edge: #f09a4a;
+  --cat-choice-edge: #b98af0;
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
   --color-brand: var(--brand);

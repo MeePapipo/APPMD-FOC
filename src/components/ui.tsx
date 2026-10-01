@@ -20,7 +20,7 @@ export function Button({
   const sizes = { sm: "px-3 py-1.5 text-sm", md: "px-4 py-2.5 text-sm", icon: "p-0 text-sm" };
   const variants = {
     primary: "bg-brand text-white hover:bg-brand-dark",
-    secondary: "bg-white text-ink border border-line-strong hover:bg-canvas",
+    secondary: "bg-surface text-ink border border-line-strong hover:bg-canvas",
     ghost: "text-brand hover:bg-brand-tint",
     danger: "bg-negative text-white hover:opacity-90",
   };

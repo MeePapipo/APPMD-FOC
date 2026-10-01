@@ -8,13 +8,14 @@ import { signOut } from "next-auth/react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { NAV_HOVER } from "@/lib/hoverStyles";
 
 type NavUser = { name?: string | null; email?: string | null; role: "USER" | "ADMIN" };
 
 const links = [
   { href: "/calculator", label: "Calculator" },
-  { href: "/history", label: "History" },
+  { href: "/history", label: "Order History" },
   { href: "/dashboard", label: "Dashboard" },
 ];
 
@@ -68,7 +69,7 @@ export function AppNav({ user }: { user: NavUser }) {
         <div className="flex items-center gap-8">
           <Link href="/calculator" className="flex items-center gap-2.5">
             <Logo className="h-7 w-auto text-brand" />
-            <span className="hidden text-sm font-semibold text-ink sm:inline">FOC Calculator</span>
+            <span className="hidden text-sm font-semibold text-ink sm:inline">Application Molecular</span>
           </Link>
           <nav className="hidden items-center gap-6 md:flex">
             {items.map((i) => (
@@ -84,6 +85,7 @@ export function AppNav({ user }: { user: NavUser }) {
               {user.role === "ADMIN" ? "Administrator" : "Sales rep"}
             </div>
           </div>
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="sm"

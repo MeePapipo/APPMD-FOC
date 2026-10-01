@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 /**
  * Shared chrome for /login and /register. A solid Roche-blue panel carries
@@ -33,7 +34,8 @@ export function AuthShell({
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center bg-surface px-6 py-10 sm:px-10">
+      <div className="relative flex flex-1 items-center justify-center bg-surface px-6 py-10 sm:px-10">
+        <ThemeToggle className="absolute right-3 top-3 h-9 w-9 text-muted hover:text-ink" />
         <div className="w-full max-w-sm">
           <h1 className="text-2xl font-bold text-ink">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}

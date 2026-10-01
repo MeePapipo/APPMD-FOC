@@ -77,7 +77,7 @@ export function InstrumentUsageImportControl() {
     }
   }
 
-  const fileButton = "inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-white px-3 py-2 text-sm font-medium text-ink hover:bg-canvas";
+  const fileButton = "inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas";
 
   return (
     <div className="mb-6 rounded-lg border border-line-strong bg-canvas p-3">
