@@ -171,7 +171,9 @@ function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRo
   const totalBonusCost = composition.bonusCost;
   const totalCost = totalFocCost + totalBonusCost;
   const focPct = totalRevenue > 0 ? (totalCost / totalRevenue) * 100 : 0;
-  const totalSoldQty = facts.reduce((t, f) => t + f.soldQty, 0);
+  // Reagent kits sold, to pair with the revenue above (revenue counts Reagents, kits only). Summing every
+  // Item Group let one customer's control-product credit notes turn the tile negative.
+  const totalSoldQty = facts.reduce((t, f) => t + f.revenueQty, 0);
   const totalFocQty = facts.reduce((t, f) => t + f.focQty, 0);
   const totalBonusQty = facts.reduce((t, f) => t + f.bonusQty, 0);
 
@@ -181,7 +183,7 @@ function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRo
   return (
     <div>
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile label="Revenue" value={money(totalRevenue)} hint={`${totalSoldQty.toLocaleString()} units sold`} accent={REVENUE_COLOR} />
+        <StatTile label="Revenue" value={money(totalRevenue)} hint={`${totalSoldQty.toLocaleString()} reagent units sold`} accent={REVENUE_COLOR} />
         <StatTile label="FOC cost" value={money(totalFocCost)} hint={`${totalFocQty.toLocaleString()} units given FOC`} accent={REVENUE_COLOR} />
         <StatTile label="Bonus cost" value={money(totalBonusCost)} hint={`${totalBonusQty.toLocaleString()} units given as bonus`} accent={FOC_VALUE_COLOR} />
         <StatTile label="Total cost (FOC + Bonus)" value={money(totalCost)} hint={`${(totalFocQty + totalBonusQty).toLocaleString()} units given away`} />

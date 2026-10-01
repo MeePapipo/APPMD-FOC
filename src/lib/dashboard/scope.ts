@@ -8,10 +8,10 @@ import { inItemGroups } from "./itemGroups";
 const SCOPE_SELECT = {
   year: true, month: true, team: true, rep: true, category: true, accountName: true,
   materialNo: true, productName: true, revenue: true, focCost: true, bonusCost: true,
-  soldQty: true, focQty: true, bonusQty: true,
+  soldQty: true, revenueQty: true, focQty: true, bonusQty: true,
 } as const;
 
-export type ScopeFact = FocActualFact & { rep: string | null; category: string | null; focQty: number; bonusQty: number };
+export type ScopeFact = FocActualFact & { rep: string | null; category: string | null; revenueQty: number; focQty: number; bonusQty: number };
 
 export type AccountScopeRow = ReturnType<typeof focAccountRows>[number] & {
   /** Item-level Over Quota (information). */
