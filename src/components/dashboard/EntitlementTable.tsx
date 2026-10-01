@@ -157,8 +157,9 @@ export function EntitlementTable({ entitlement, period = null }: { entitlement: 
                       ฿{money(total)}
                       {b.key === "over" && entitlement.totals.significantCost > 0 && entitlement.totals.significantCost < total && (
                         // The Accounts list's "Over Quota" figure is the red part only; show both so the two tie out.
-                        <span className="block text-[11px] font-normal text-muted" title="Red = beyond +1 per bill (the figure on the Accounts list); yellow = within it">
-                          <span className="text-negative">แดง ฿{money(entitlement.totals.significantCost)}</span> · <span className="text-warning">เหลือง ฿{money(total - entitlement.totals.significantCost)}</span>
+                        <span className="mt-0.5 block whitespace-nowrap text-[11px] font-normal leading-tight" title="Red = beyond +1 per bill (the figure on the Accounts list); yellow = within it">
+                          <span className="block text-negative">แดง ฿{money(entitlement.totals.significantCost)}</span>
+                          <span className="block text-warning">เหลือง ฿{money(total - entitlement.totals.significantCost)}</span>
                         </span>
                       )}
                     </td>
