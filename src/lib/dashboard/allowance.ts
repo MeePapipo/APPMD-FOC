@@ -31,7 +31,7 @@ export async function loadAllowance(args: {
       where: { accountName: { contains: `(${accountNumber.padStart(10, "0")})` }, OR: [{ product: LEGACY_PRODUCT }, { product: null }] },
       select: { year: true, materialNo: true, productName: true, soldQty: true, focQty: true, bonusQty: true, focCost: true, bonusCost: true },
     }),
-    prisma.focActual.findFirst({ orderBy: [{ year: "desc" }, { month: "desc" }], select: { year: true, month: true } }),
+    prisma.focActual.findFirst({ where: { OR: [{ product: LEGACY_PRODUCT }, { product: null }] }, orderBy: [{ year: "desc" }, { month: "desc" }], select: { year: true, month: true } }),
     prisma.additionalFocItem.findMany({ where: { active: true }, select: { materialNo: true } }),
     loadAlertThresholds(),
   ]);

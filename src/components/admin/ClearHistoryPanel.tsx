@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 
 type Kind = "all" | "user" | "account" | "before";
-const selectClass = "rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm focus:outline-brand";
+const selectClass = "max-w-full rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm focus:outline-brand";
 
 /**
  * Admin-only: hide submitted orders from Order History (they are marked VOID, never deleted) or, in the

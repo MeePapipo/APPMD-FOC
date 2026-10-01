@@ -46,7 +46,8 @@ export function DeltaChip({
 
   const tone = dir === "flat" ? "text-muted" : (dir === "up") === (upIs === "good") ? "text-positive" : "text-negative";
   return (
-    <span title={title} className={cn("inline-flex items-baseline gap-1 whitespace-nowrap text-[11px] font-medium tabular-nums", tone, className)}>
+    <span title={title} // Compact chips (table cells) never wrap; the full form may, so "vs 2025 Jan–Sep" cannot push a narrow tile wider.
+      className={cn("inline-flex items-baseline gap-1 text-[11px] font-medium tabular-nums", compact && "whitespace-nowrap", !compact && "flex-wrap", tone, className)}>
       <span aria-hidden="true">{dir === "up" ? "▲" : dir === "down" ? "▼" : "–"}</span>
       <span className="sr-only">{dir === "up" ? "up" : dir === "down" ? "down" : "unchanged"}</span>
       {text}

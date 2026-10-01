@@ -192,8 +192,8 @@ export function AccountMatrixPanel({
                     <VsQuota row={e} split={split} annual={annual} />
                   </div>
                   <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                    <CardStat label={`Quota ${matrix.year}`} value={e ? e.quota.toLocaleString() : "—"} title={quotaHint(matrix.year, annual)} strong />
                     <CardStat label="Prior year" value={fmt(value(r.prior)) || "0"} title={splitTitle(r.prior)} />
+                    <CardStat label={`Quota ${matrix.year}`} value={e ? e.quota.toLocaleString() : "—"} title={quotaHint(matrix.year, annual)} strong />
                     <CardStat label={`YTD ${matrix.year}`} value={fmt(value(r.ytd)) || "0"} title={splitTitle(r.ytd)} strong />
                   </dl>
                   <div className="mt-2 flex flex-wrap gap-1.5">
