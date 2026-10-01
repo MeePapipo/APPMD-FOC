@@ -17,6 +17,7 @@ type AccountDetail = {
   ownTpbUsed?: boolean;
   team: string | null;
   rep: string | null;
+  scopeYear?: number | null;
   summary: { revenue: number; focCost: number; bonusCost: number; totalCost: number; ratio: number };
   monthly: { key: string; label: string; revenue: number; focCost: number; bonusCost: number; focValue: number; ratio: number }[];
   productsGiven: { materialNo: string; productName: string; focQty: number; bonusQty: number; focCost: number; bonusCost: number; focValue: number }[];
@@ -35,8 +36,8 @@ type AccountDetail = {
 };
 
 /** Per-account deep-dive, opened from a row in `FocActualsAccountTable`.
- * The KPI tiles and the product lists cover the account's full history in the
- * page's Product; the two trend charts show the selected year only. Panel
+ * Every figure covers the selected year only (the whole loaded history when
+ * the page's Year filter is All years), in the page's Product. Panel
  * order (header/KPIs -> monthly trend -> ratio line -> products given ->
  * quota table -> products sold) mirrors the reference dashboard's own
  * account modal exactly, per praditww's "ทำให้เหมือนต้นแบบ" ask. */
@@ -46,13 +47,16 @@ const compact = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1)}M` 
 export function AccountDrilldown({
   accountName,
   year = null,
+  allYears = false,
   product = "",
   itemGroups = "",
   onClose,
 }: {
   accountName: string;
-  /** The year the trend charts show; null = the whole history. */
+  /** The year every figure covers; null = the whole history. */
   year?: number | null;
+  /** The page's Year filter is All years: cover the whole history even though `year` is set. */
+  allYears?: boolean;
   /** The page's `pl3` param, "" = the default Product. */
   product?: string;
   /** The page's `ig` param, "" = the default Item Groups. */
@@ -67,7 +71,7 @@ export function AccountDrilldown({
     // (`key={selected}`), so switching accounts remounts with fresh state
     // rather than needing an effect to clear the previous account's data.
     let cancelled = false;
-    const query = `name=${encodeURIComponent(accountName)}${year ? `&year=${year}` : ""}${itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : ""}${product ? `&pl3=${encodeURIComponent(product)}` : ""}`;
+    const query = `name=${encodeURIComponent(accountName)}${year ? `&year=${year}` : ""}${allYears ? "&span=all" : ""}${itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : ""}${product ? `&pl3=${encodeURIComponent(product)}` : ""}`;
     fetch(`/api/dashboard/account?${query}`)
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Failed to load account.");
@@ -76,7 +80,7 @@ export function AccountDrilldown({
       .then((data) => { if (!cancelled) setDetail(data); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load account."); });
     return () => { cancelled = true; };
-  }, [accountName, year, product, itemGroups]);
+  }, [accountName, year, allYears, product, itemGroups]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -122,6 +126,7 @@ export function AccountDrilldown({
 
           {detail && (
             <div className="space-y-6">
+              <p className="text-xs text-muted">Figures below cover {detail.scopeYear ? `${detail.scopeYear} only` : "the whole loaded history"}.</p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 <StatTile label="Revenue" value={money(detail.summary.revenue)} accent={REVENUE_COLOR} />
                 <StatTile label="FOC cost" value={money(detail.summary.focCost)} accent={REVENUE_COLOR} />
@@ -134,8 +139,8 @@ export function AccountDrilldown({
               </div>
 
               <div>
-                <h3 className="mb-1 text-sm font-semibold text-ink">Monthly trend{year ? ` ${year}` : " (full history)"}</h3>
-                <p className="mb-3 text-xs text-muted">Revenue and FOC value (THB) per month{year ? ` of ${year}` : ""}, independent of the page&apos;s month filter.</p>
+                <h3 className="mb-1 text-sm font-semibold text-ink">Monthly trend{detail.scopeYear ? ` ${detail.scopeYear}` : " (full history)"}</h3>
+                <p className="mb-3 text-xs text-muted">Revenue and FOC value (THB) per month{detail.scopeYear ? ` of ${detail.scopeYear}` : ""}, independent of the page&apos;s month filter.</p>
                 <BarChart
                   data={detail.monthly.map((m) => ({ category: m.label, values: { revenue: m.revenue, focValue: m.focValue } }))}
                   series={[
@@ -148,7 +153,7 @@ export function AccountDrilldown({
               </div>
 
               <div>
-                <h3 className="mb-1 text-sm font-semibold text-ink">% Total cost / revenue{year ? ` ${year}` : ""}</h3>
+                <h3 className="mb-1 text-sm font-semibold text-ink">% Total cost / revenue{detail.scopeYear ? ` ${detail.scopeYear}` : ""}</h3>
                 <LineChart
                   data={detail.monthly.map((m) => ({ label: m.label, value: Number.isFinite(m.ratio) ? m.ratio * 100 : null }))}
                   referenceValue={20}
@@ -170,16 +175,11 @@ export function AccountDrilldown({
                 )}
               </div>
 
-              {detail.ownTpbUsed && (
-                <p className="-mb-3 text-xs text-muted">
-                  Quota below is worked out with this account&apos;s own tests-per-run (never below half the national figure), not the national average.
-                </p>
-              )}
-              <EntitlementTable entitlement={detail.entitlement} />
+              <EntitlementTable entitlement={detail.entitlement} period={detail.scopeYear ? String(detail.scopeYear) : null} />
 
               <div>
                 <h3 className="mb-1 text-sm font-semibold text-ink">Reagents sold to this account</h3>
-                <p className="mb-3 text-xs text-muted">Boxes sold over the whole history, with the tests they hold (pack size from Master data, or the test count in the product name).</p>
+                <p className="mb-3 text-xs text-muted">Boxes sold {detail.scopeYear ? `in ${detail.scopeYear}` : "over the whole history"}, with the tests they hold (pack size from Master data, or the test count in the product name).</p>
                 {detail.productsSold.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted">No revenue-category sales.</p>
                 ) : (

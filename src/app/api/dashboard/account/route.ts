@@ -29,8 +29,10 @@ export async function GET(request: Request) {
   const years = detail.years;
   const askedYear = Number(params.get("year"));
   const year = Number.isInteger(askedYear) && askedYear > 0 ? askedYear : years[0];
-  // The trend charts show the year asked for; with no year they cover the whole history.
-  const trendRows = Number.isInteger(askedYear) && askedYear > 0 ? rows.filter((r) => r.year === askedYear) : rows;
+  // Everything except the matrix (which needs last year for its Prior column) covers the selected year only;
+  // with no year, or span=all (the page's Year filter is All years), it covers every loaded month.
+  const scoped = Number.isInteger(askedYear) && askedYear > 0 && params.get("span") !== "all";
+  const scopedRows = scoped ? rows.filter((r) => r.year === askedYear) : rows;
 
   return Response.json({
     accountName: name,
@@ -39,12 +41,12 @@ export async function GET(request: Request) {
     ownTpbUsed: detail.ownTpbUsed,
     team: detail.team,
     rep: detail.rep,
-    summary: accountSummary(rows),
-    monthly: accountMonthlyTrend(trendRows),
-    productsGiven: accountProductsGiven(rows, 10),
-    productsSold: withVolume(accountProductsSold(rows, 10), detail.packByMaterial),
-    // The summary tiles follow the shown year, or every loaded month when the page's Year filter is All years.
-    entitlement: params.get("span") === "all" ? entitlement : { ...entitlement, net: detail.netForYear(year) },
+    scopeYear: scoped ? askedYear : null,
+    summary: accountSummary(scopedRows),
+    monthly: accountMonthlyTrend(scopedRows),
+    productsGiven: accountProductsGiven(scopedRows, 10),
+    productsSold: withVolume(accountProductsSold(scopedRows, 10), detail.packByMaterial),
+    entitlement: scoped && detail.quotaMode === "formula" ? detail.entitlementForYear(askedYear) : entitlement,
     quotaMode: detail.quotaMode,
     // Quota and what was given in the shown year, per item with a quota rule (what the matrix compares).
     yearQuota: detail.yearQuotaFor(year),

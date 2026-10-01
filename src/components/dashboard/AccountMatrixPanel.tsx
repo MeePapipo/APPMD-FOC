@@ -217,16 +217,16 @@ export function AccountMatrixPanel({
                 <tr className="text-[11px] uppercase tracking-wide">
                   <th scope="col" className="sticky left-0 z-10 bg-brand-tint px-3 pt-2" />
                   {showGroup && <th scope="col" />}
-                  <th scope="col" className="px-2 pt-2 text-right font-medium text-ink" title={quotaHint(matrix.year, annual)}>Quota {matrix.year}</th>
                   <th scope="col" className="px-2 pt-2 text-right font-medium">Last year</th>
+                  <th scope="col" className="px-2 pt-2 text-right font-medium text-ink" title={quotaHint(matrix.year, annual)}>Quota {matrix.year}</th>
                   <th scope="col" colSpan={12} className="border-l border-line px-2 pt-2 text-center font-medium">{matrix.year} by month</th>
                   <th scope="col" colSpan={2} className="border-l border-line px-3 pt-2 text-right font-medium text-ink">{matrix.year} YTD vs quota</th>
                 </tr>
                 <tr className="border-b border-line">
                   <th scope="col" className="sticky left-0 z-10 min-w-56 bg-brand-tint px-3 py-2 text-left">Product</th>
                   {showGroup && <th scope="col" className="px-2 py-2 text-left">Item Group</th>}
-                  <th scope="col" className="bg-brand-tint/70 px-2 py-2 text-right text-sm font-semibold text-ink" title={quotaHint(matrix.year, annual)}>Quota</th>
                   <th scope="col" className="px-2 py-2 text-right" title="Given last year (total)">Prior yr</th>
+                  <th scope="col" className="bg-brand-tint/70 px-2 py-2 text-right text-sm font-semibold text-ink" title={quotaHint(matrix.year, annual)}>Quota</th>
                   {MONTH_SHORT.map((m, i) => (
                     <th key={m} scope="col" className={cn("px-1.5 py-2 text-right font-normal", i === 0 && "border-l border-line")}>{m}</th>
                   ))}
@@ -245,8 +245,8 @@ export function AccountMatrixPanel({
                         <div className="text-xs text-muted">{r.materialNo}</div>
                       </th>
                       {showGroup && <td className="max-w-32 truncate px-2 py-2 text-xs text-muted" title={r.itemGroup ?? undefined}>{r.itemGroup ?? "—"}</td>}
-                      <td className="bg-brand-tint/30 px-2 py-2 text-right text-sm font-semibold tabular-nums text-ink">{e ? e.quota.toLocaleString() : "—"}</td>
                       <td className="px-2 py-2 text-right tabular-nums text-muted" title={splitTitle(r.prior)}>{fmt(value(r.prior))}</td>
+                      <td className="bg-brand-tint/30 px-2 py-2 text-right text-sm font-semibold tabular-nums text-ink">{e ? e.quota.toLocaleString() : "—"}</td>
                       {r.months.map((c, i) => (
                         <td key={i} className={cn("px-1.5 py-2 text-right text-xs tabular-nums text-muted", i === 0 && "border-l border-line")} title={value(c) !== 0 ? splitTitle(c) : undefined}>{fmt(value(c))}</td>
                       ))}
@@ -260,8 +260,8 @@ export function AccountMatrixPanel({
                 <tr className="border-t border-line-strong text-xs font-medium">
                   <th scope="row" className="sticky left-0 z-10 bg-surface px-3 py-2 text-left">Total</th>
                   {showGroup && <td />}
-                  <td />
                   <td className="px-2 py-2 text-right tabular-nums">{fmt(value(matrix.totals.prior))}</td>
+                  <td />
                   {matrix.totals.months.map((c, i) => (
                     <td key={i} className="px-2 py-2 text-right tabular-nums">{fmt(value(c))}</td>
                   ))}

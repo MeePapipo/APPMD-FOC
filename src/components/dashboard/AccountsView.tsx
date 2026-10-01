@@ -279,7 +279,7 @@ export function AccountsView({
           onFullDetail={() => setDetail(selectedRow.accountName)}
         />
       )}
-      {detail && <AccountDrilldown key={detail} accountName={detail} year={year} product={product} itemGroups={itemGroups} onClose={() => setDetail(null)} />}
+      {detail && <AccountDrilldown key={detail} accountName={detail} year={year} allYears={allYears} product={product} itemGroups={itemGroups} onClose={() => setDetail(null)} />}
     </div>
   );
 }

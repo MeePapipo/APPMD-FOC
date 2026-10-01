@@ -118,14 +118,14 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     return out;
   };
 
-  // The account-level net (Quota value, Bonus given, stand-alone FOC) for one calendar year, so the summary
-  // tiles cover the same period as the matrix and the cost figures; null = every loaded month.
-  const netForYear = (year: number | null) => {
+  // The whole entitlement (quota rows, net summary, stand-alone FOC) for one calendar year, so the summary
+  // tiles and the quota table cover the same period as the matrix and the cost figures; null = every loaded month.
+  const entitlementForYear = (year: number | null) => {
     const inYear = (r: { year: number }) => year === null || r.year === year;
     return computeEntitlement(
       buildGot(defaultRows.filter(inYear), year === null ? recentFromPeriod(through.latest) : undefined),
       assays, items, additionalMats, tpbInput, alert, reagentBillMonths(allRows.filter(inYear)),
-    ).net;
+    );
   };
 
   // Pack size per reagent material (6800 and 5800 share material numbers and sizes), for boxes -> tests.
@@ -140,7 +140,7 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     entitlement,
     quotaMode: (annualMode ? "annual" : "formula") as "annual" | "formula",
     yearQuotaFor,
-    netForYear,
+    entitlementForYear,
     accountNumber: name.match(/\(([^()]+)\)\s*$/)?.[1] ?? null,
     ownTpbUsed: [...(tpbDetail?.values() ?? [])].some((d) => d.source !== "national"),
     team: dominant(allRows.map((r) => r.team)),

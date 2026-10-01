@@ -69,7 +69,7 @@ const BUCKETS: { key: EntitlementRow["bucket"]; title: string; hint: string; tot
  * same bucket grouping) per praditww's explicit "ทำให้เหมือนต้นแบบ" ask. See
  * `src/lib/dashboard/entitlement.ts` for the computation and its verification
  * against this exact reference. */
-export function EntitlementTable({ entitlement }: { entitlement: Entitlement }) {
+export function EntitlementTable({ entitlement, period = null }: { entitlement: Entitlement; period?: string | null }) {
   const [open, setOpen] = useState<Set<string>>(new Set(BUCKETS.filter((b) => b.defaultOpen).map((b) => b.key)));
   const [sortKey, setSortKey] = useState<SortKey>("excessValue");
   const [desc, setDesc] = useState(true);
@@ -121,7 +121,7 @@ export function EntitlementTable({ entitlement }: { entitlement: Entitlement }) 
             .join(" · ")}
         </p>
       )}
-      <p className="mb-1 text-xs text-muted">ครอบคลุมทั้งช่วงข้อมูล ไม่ขึ้นกับตัวกรองเดือน · จำนวนเป็นกล่อง</p>
+      <p className="mb-1 text-xs text-muted">{period ? `เฉพาะปี ${period}` : "ครอบคลุมทั้งช่วงข้อมูล"} ไม่ขึ้นกับตัวกรองเดือน · จำนวนเป็นกล่อง</p>
       {typeof entitlement.bills === "number" && (
         <p className="mb-3 text-xs text-muted">
           บิลน้ำยา (เดือนที่มียอดขาย) {entitlement.bills.toLocaleString()} บิล · แถมเกินสิทธิ์ไม่เกิน +{entitlement.bills.toLocaleString()} = <span className="font-medium text-warning">Warning</span> (เหลือง) · เกินกว่านั้น = <span className="font-medium text-negative">Over Quota</span> (แดง)
