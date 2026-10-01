@@ -62,7 +62,7 @@ function MatrixDocument({ input }: { input: AccountPdfInput }) {
           </View>
         ))}
         <T style={{ fontSize: 6, color: MUTED, marginTop: 3 }}>
-          Entitled = cumulative entitlement over the account&apos;s full history; Given % and Status compare it with everything given.
+          Quota = what the account may be given for the year, worked out from the reagents it bought; Given % and Status compare it with YTD given.
         </T>
 
         <View style={styles.headRow}>

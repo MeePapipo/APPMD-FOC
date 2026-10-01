@@ -1,5 +1,5 @@
 import { requireApiUser } from "@/lib/api-auth";
-import { loadAccountDetail } from "@/lib/dashboard/accountDetailLoader";
+import { loadAccountDetail, yearEntitlementLite } from "@/lib/dashboard/accountDetailLoader";
 import { parseItemGroups } from "@/lib/dashboard/filters";
 import { buildAccountMatrix, type Measure } from "@/lib/dashboard/focAccountMatrix";
 import { accountMatrixCsv } from "@/lib/dashboard/focExports";
@@ -24,20 +24,22 @@ export async function GET(request: Request) {
   const askedYear = Number(params.get("year"));
   const year = Number.isInteger(askedYear) && askedYear > 0 ? askedYear : detail.years[0];
   const matrix = buildAccountMatrix(detail.rows, year);
+  // Quota and Given are for the same year as the month columns.
+  const quota = yearEntitlementLite(detail.yearQuotaFor(year));
   const account = { name, number: detail.accountNumber, team: detail.team, rep: detail.rep };
   // ASCII only: the account name can be Thai, which a header cannot carry.
   const fileStem = `FOC-${(detail.accountNumber ?? "account").replace(/[^A-Za-z0-9_-]/g, "")}-${year}-${measure}`;
   const headers = { "Cache-Control": "private, no-store" };
 
   if (format === "csv") {
-    return new Response(accountMatrixCsv(account, matrix, detail.entitlement.rows, measure), {
+    return new Response(accountMatrixCsv(account, matrix, quota, measure), {
       headers: { ...headers, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${fileStem}.csv"` },
     });
   }
 
   let buffer: Buffer;
   try {
-    buffer = await buildAccountMatrixPdf({ ...account, matrix, entitlement: detail.entitlement.rows, measure });
+    buffer = await buildAccountMatrixPdf({ ...account, matrix, entitlement: quota, measure });
   } catch (cause) {
     if (cause instanceof MissingThaiFontError) {
       console.error(cause.message);

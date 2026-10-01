@@ -42,6 +42,8 @@ export async function GET(request: Request) {
     productsGiven: accountProductsGiven(rows, 10),
     productsSold: withVolume(accountProductsSold(rows, 10), detail.packByMaterial),
     entitlement,
+    // Quota and what was given in the shown year, per item with a quota rule (what the matrix compares).
+    yearQuota: detail.yearQuotaFor(year),
     years,
     matrix: buildAccountMatrix(rows, year),
   });

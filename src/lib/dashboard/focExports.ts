@@ -27,7 +27,7 @@ export const quotaPct = (e: EntitlementLite | undefined): number | null =>
   e && e.expected > 0 ? (e.free / e.expected) * 100 : null;
 
 export const MATRIX_HEADERS = [
-  "Product code", "Product", "Quota (cumulative units)", "Given % of quota", "Status",
+  "Product code", "Product", "Quota (units, year)", "Given % of quota", "Status",
   "Prior-year total", ...MONTH_SHORT, "YTD total",
 ];
 

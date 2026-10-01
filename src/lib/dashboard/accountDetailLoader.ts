@@ -1,10 +1,19 @@
 import { prisma } from "@/lib/prisma";
 import { loadEngineData } from "@/lib/calc/service";
-import { computeEntitlement } from "./entitlement";
+import { alertPctFor, computeEntitlement, isSignificantOver } from "./entitlement";
+import type { EntitlementLite } from "./focExports";
 import { accountNumberFromName, buildGot, recentFromPeriod } from "./accountGiven";
 import { loadDataThrough } from "./dataThrough";
 import { loadAlertThresholds } from "./alertSettings";
 import { inItemGroups } from "./itemGroups";
+
+/** One reagent-consumable item for one calendar year: the quota earned in the year and what was given in it (units). */
+export type YearQuota = { quota: number; free: number; focQty: number; bonusQty: number; significant: boolean };
+
+/** The year view as the lite rows the CSV/PDF builders and the matrix panel read. */
+export function yearEntitlementLite(yq: Record<string, YearQuota>): (EntitlementLite & { focQty: number; bonusQty: number })[] {
+  return Object.entries(yq).map(([materialNo, v]) => ({ materialNo, expected: v.quota, free: v.free, focQty: v.focQty, bonusQty: v.bonusQty, significant: v.significant }));
+}
 
 /** Whichever value appears on the most rows — the "dominant tag" convention
  * for team/rep, which can change mid-history (e.g. a rep transfer). */
@@ -52,6 +61,35 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
   const additionalMats = new Set(additionalItems.map((i) => i.materialNo));
   const entitlement = computeEntitlement(buildGot(allRows.filter((r) => inItemGroups(r.category, null)), recentFromPeriod(through.latest)), assays, items, additionalMats, tpbInput, alert);
 
+  // Quota earned in a calendar year = the cumulative quota at that year's end minus the cumulative
+  // quota at the end of the year before (no rounding jump at New Year; the years add up to the
+  // cumulative figure). "Given" is what went out in that year, so a year reads Quota vs YTD.
+  const defaultRows = allRows.filter((r) => inItemGroups(r.category, null));
+  const yearsAsc = [...new Set(allRows.map((r) => r.year))].sort((a, b) => a - b);
+  const ruleMats = new Set(entitlement.rows.filter((r) => r.bucket === "over" || r.bucket === "within").map((r) => r.materialNo));
+  const cumulative = new Map<number, Record<string, number>>();
+  for (const y of yearsAsc) {
+    const upTo = defaultRows.filter((r) => r.year * 12 + r.month <= y * 12 + 12);
+    const expected: Record<string, number> = {};
+    for (const row of computeEntitlement(buildGot(upTo), assays, items, additionalMats, tpbInput, alert).rows) expected[row.materialNo] = row.expected;
+    cumulative.set(y, expected);
+  }
+  const alertPct = alertPctFor(entitlement.platform.platform, alert);
+  const yearQuotaFor = (year: number): Record<string, YearQuota> => {
+    const before = [...yearsAsc].reverse().find((y) => y < year);
+    const prev = before === undefined ? {} : cumulative.get(before)!;
+    const now = cumulative.get(year) ?? {};
+    const given = buildGot(defaultRows.filter((r) => r.year === year));
+    const out: Record<string, YearQuota> = {};
+    for (const mat of ruleMats) {
+      const quota = Math.max(0, (now[mat] ?? 0) - (prev[mat] ?? 0));
+      const g = given.get(mat);
+      const focQty = g?.foc ?? 0, bonusQty = g?.bonus ?? 0, free = focQty + bonusQty;
+      out[mat] = { quota, free, focQty, bonusQty, significant: isSignificantOver(free - quota, quota, alertPct, alert.minOverUnits) && free > quota };
+    }
+    return out;
+  };
+
   // Pack size per reagent material (6800 and 5800 share material numbers and sizes), for boxes -> tests.
   const packByMaterial: Record<string, number> = {};
   for (const a of assays) if (a.packSize > 0) packByMaterial[a.materialNo] = a.packSize;
@@ -62,6 +100,7 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     /** Every year the account has rows in, whatever the Item Group filter. */
     years: [...new Set(allRows.map((r) => r.year))].sort((a, b) => b - a),
     entitlement,
+    yearQuotaFor,
     accountNumber: name.match(/\(([^()]+)\)\s*$/)?.[1] ?? null,
     ownTpbUsed: [...(tpbDetail?.values() ?? [])].some((d) => d.source !== "national"),
     team: dominant(allRows.map((r) => r.team)),
