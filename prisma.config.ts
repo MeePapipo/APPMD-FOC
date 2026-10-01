@@ -8,7 +8,10 @@ import { defineConfig, env } from "prisma/config";
 export default defineConfig({
   schema: path.join("prisma", "schema.prisma"),
   datasource: {
-    url: env("DATABASE_URL"),
+    // `prisma migrate deploy` needs a direct (non-pooled) connection: an advisory lock does not survive Neon's
+    // pooler. Set DIRECT_URL to the direct string and keep DATABASE_URL pooled for the app; with no DIRECT_URL
+    // the CLI uses DATABASE_URL as before.
+    url: process.env.DIRECT_URL || env("DATABASE_URL"),
   },
   migrations: {
     seed: "tsx prisma/seed.ts",
