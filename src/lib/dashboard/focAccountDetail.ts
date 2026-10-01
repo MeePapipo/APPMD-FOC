@@ -114,8 +114,10 @@ export function accountProductsSold(
     b.revenue += r.revenue;
     buckets.set(key, b);
   }
+  // A sale reversed by a credit note nets to zero (or below): nothing was sold, so it is not listed.
   return [...buckets.entries()]
     .map(([materialNo, v]) => ({ materialNo, ...v }))
+    .filter((v) => v.revenueQty > 0)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, limit);
 }

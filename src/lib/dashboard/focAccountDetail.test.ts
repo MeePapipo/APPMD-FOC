@@ -79,4 +79,13 @@ describe("accountProductsSold", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ materialNo: "A", revenue: 1000, revenueQty: 2 });
   });
+
+  it("drops a product whose sale was fully reversed by a credit note", () => {
+    const result = accountProductsSold([
+      fact({ materialNo: "A", revenue: 1000, revenueQty: 2 }),
+      fact({ materialNo: "R", month: 2, revenue: 500, revenueQty: 5 }),
+      fact({ materialNo: "R", month: 4, revenue: -500, revenueQty: -5 }),
+    ]);
+    expect(result.map((r) => r.materialNo)).toEqual(["A"]);
+  });
 });

@@ -199,6 +199,18 @@ export function ActualsFilters({
               {annual ? "Over Quota only" : "Flagged only"}
             </label>
           )}
+          {view === "accounts" && (
+            <label className="flex items-center gap-2 text-sm text-ink" title="Hide accounts with no revenue, whose cost/revenue shows as N/A">
+              <input
+                type="checkbox"
+                aria-label="Exclude accounts with no revenue (cost/revenue N/A)"
+                checked={get("xna") === "1"}
+                onChange={(e) => setParam("xna", e.target.checked ? "1" : "")}
+                className="h-4 w-4 rounded border-line-strong accent-brand"
+              />
+              Exclude N/A
+            </label>
+          )}
           {view === "overview" && (
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
