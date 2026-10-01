@@ -60,7 +60,7 @@ export function AlertsView({
                     <span className="shrink-0 text-sm font-medium tabular-nums text-negative">{money(r.excessValue)}</span>
                   </div>
                   <p className="mt-1 text-xs tabular-nums text-muted">
-                    Bonus {money(r.bonusValue)} / Entitled {money(r.entitledValue)} · {formatOverPct(r.overPct)}
+                    Bonus {money(r.bonusValue)} / Quota {money(r.entitledValue)} · {formatOverPct(r.overPct)}
                   </p>
                   {r.topItems.length > 0 && (
                     <p className="mt-1 text-xs text-muted">{r.topItems.map((i) => `${i.productName} (+${i.over.toLocaleString()})`).join(" · ")}</p>
@@ -73,7 +73,7 @@ export function AlertsView({
                 <thead className="bg-brand-tint text-xs text-muted">
                   <tr className="border-y border-line text-left">
                     <th scope="col" className="px-3 py-2">Account</th>
-                    <th scope="col" className="px-3 py-2 text-right">Entitled value</th>
+                    <th scope="col" className="px-3 py-2 text-right">Quota value</th>
                     <th scope="col" className="px-3 py-2 text-right">Bonus given</th>
                     <th scope="col" className="px-3 py-2 text-right">Excess (THB)</th>
                     <th scope="col" className="px-3 py-2 text-right">Excess %</th>

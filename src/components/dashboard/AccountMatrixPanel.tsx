@@ -14,7 +14,7 @@ import {
   type Measure,
   type Split,
 } from "@/lib/dashboard/focAccountMatrix";
-import { quotaPct, quotaStatus, type EntitlementLite } from "@/lib/dashboard/focExports";
+import { quotaStatus, type EntitlementLite } from "@/lib/dashboard/focExports";
 import type { NetSummary } from "@/lib/dashboard/entitlement";
 import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
 import { compactThb, formatOverPct } from "@/lib/dashboard/accountQuota";
@@ -36,13 +36,30 @@ const fmt = (n: number) => (n === 0 ? "" : Math.round(n).toLocaleString());
 const splitTitle = (c: MatrixCell) =>
   `FOC ${c.focQty.toLocaleString()} pcs / ${Math.round(c.focCost).toLocaleString()} THB · Bonus ${c.bonusQty.toLocaleString()} pcs / ${Math.round(c.bonusCost).toLocaleString()} THB`;
 
-function QuotaBadge({ entitlement }: { entitlement: EntitlementLite | undefined }) {
+/** "+31" / "−19" / "0": how far the units given are above or below the quota. */
+const signed = (n: number) => (n > 0 ? `+${n.toLocaleString()}` : n < 0 ? `−${Math.abs(n).toLocaleString()}` : "0");
+
+/** Units given to date for the FOC / Bonus toggle (the entitlement row carries both). */
+function givenFor(e: EntitlementLite, split: Split): number {
+  return split === "foc" ? (e.focQty ?? e.free) : split === "bonus" ? (e.bonusQty ?? e.free) : e.free;
+}
+
+/**
+ * Given to date against the quota: the percentage with the unit difference in
+ * brackets (red "+31" = over, green "−19" = still to give), then the status.
+ */
+function VsQuota({ entitlement, split }: { entitlement: EntitlementLite | undefined; split: Split }) {
   const status = quotaStatus(entitlement);
-  const pct = quotaPct(entitlement);
-  if (!status) return <span className="text-xs text-muted">No quota rule</span>;
+  if (!entitlement || !status) return <span className="text-xs text-muted">No quota rule</span>;
+  const given = givenFor(entitlement, split);
+  const diff = given - entitlement.expected;
+  const pct = entitlement.expected > 0 ? (given / entitlement.expected) * 100 : null;
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs tabular-nums">
-      {pct === null ? "no quota" : `${Math.round(pct)}%`}
+    <span className="inline-flex flex-col items-end gap-0.5 whitespace-nowrap tabular-nums">
+      <span className="text-sm font-semibold text-ink">
+        {pct === null ? "no quota" : `${Math.round(pct)}%`}{" "}
+        <span className={cn("text-xs font-medium", diff > 0 ? "text-negative" : "text-positive")}>({signed(diff)})</span>
+      </span>
       {status === "Over Quota" && <Badge tone="negative">Over Quota</Badge>}
       {status === "Over" && <Badge tone="warning">Over</Badge>}
       {status === "Within" && <Badge tone="positive">Within</Badge>}
@@ -50,12 +67,14 @@ function QuotaBadge({ entitlement }: { entitlement: EntitlementLite | undefined 
   );
 }
 
+const QUOTA_HINT = "Quota: what this account may be given, worked out from the reagents it has bought (cumulative over all loaded months, in units).";
+
 /**
  * The expanded body of an Accounts-view row: product x Jan..Dec for one year.
  * Fetched when the row is first opened (the page never ships every account's
- * matrix). Entitled is the cumulative entitlement over the account's whole
- * history, so "Given %" compares it with everything given, not with this
- * year's columns.
+ * matrix). Quota is the cumulative quota over the account's whole loaded
+ * history, so the last column compares it with everything given to date (the
+ * Total column), not with this year's columns alone.
  */
 export function AccountMatrixPanel({
   name,
@@ -119,7 +138,7 @@ export function AccountMatrixPanel({
             </button>
           ))}
         </div>
-        <span className="text-xs text-muted">{matrix.year}, {unit}. Hover a figure for its FOC/Bonus split.</span>
+        <span className="text-xs text-muted">{matrix.year} by month, {unit}. Quota, Total and vs Quota are always units and cover all loaded months. Hover a figure for its FOC/Bonus split.</span>
         <div className="ml-auto flex flex-wrap items-start gap-2">
           <DownloadButton href={`/api/dashboard/account/export?${query}&format=csv`} label="CSV"><Download className="h-4 w-4" aria-hidden="true" /></DownloadButton>
           <DownloadButton href={`/api/dashboard/account/export?${query}&format=pdf`} label="PDF"><Download className="h-4 w-4" aria-hidden="true" /></DownloadButton>
@@ -144,12 +163,13 @@ export function AccountMatrixPanel({
                       <h4 className="text-sm font-medium text-ink">{r.productName}</h4>
                       <p className="text-xs text-muted">{r.materialNo}{showGroup && r.itemGroup ? ` · ${r.itemGroup}` : ""}</p>
                     </div>
-                    <QuotaBadge entitlement={e} />
+                    <VsQuota entitlement={e} split={split} />
                   </div>
-                  <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                    <CardStat label="Entitled" value={e ? e.expected.toLocaleString() : "—"} />
+                  <dl className="mt-2 grid grid-cols-4 gap-2 text-xs">
+                    <CardStat label="Quota" value={e ? e.expected.toLocaleString() : "—"} title={QUOTA_HINT} strong />
                     <CardStat label="Prior year" value={fmt(value(r.prior)) || "0"} title={splitTitle(r.prior)} />
                     <CardStat label={`YTD ${matrix.year}`} value={fmt(value(r.ytd)) || "0"} title={splitTitle(r.ytd)} strong />
+                    <CardStat label="Given to date" value={e ? givenFor(e, split).toLocaleString() : "—"} strong />
                   </dl>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {r.months.map((c, i) =>
@@ -169,16 +189,25 @@ export function AccountMatrixPanel({
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[60rem] text-sm">
               <thead className="bg-brand-tint text-xs text-muted">
-                <tr className="border-y border-line">
+                <tr className="text-[11px] uppercase tracking-wide">
+                  <th scope="col" className="sticky left-0 z-10 bg-brand-tint px-3 pt-2" />
+                  {showGroup && <th scope="col" />}
+                  <th scope="col" className="px-2 pt-2 text-right font-medium text-ink" title={QUOTA_HINT}>Quota</th>
+                  <th scope="col" className="px-2 pt-2 text-right font-medium">Last year</th>
+                  <th scope="col" colSpan={12} className="border-l border-line px-2 pt-2 text-center font-medium">{matrix.year} by month</th>
+                  <th scope="col" colSpan={3} className="border-l border-line px-3 pt-2 text-right font-medium text-ink">To date vs quota</th>
+                </tr>
+                <tr className="border-b border-line">
                   <th scope="col" className="sticky left-0 z-10 min-w-56 bg-brand-tint px-3 py-2 text-left">Product</th>
                   {showGroup && <th scope="col" className="px-2 py-2 text-left">Item Group</th>}
-                  <th scope="col" className="px-2 py-2 text-right" title="Cumulative entitlement over the account's full history, in units">Entitled</th>
-                  <th scope="col" className="px-2 py-2 text-right">Prior yr</th>
-                  {MONTH_SHORT.map((m) => (
-                    <th key={m} scope="col" className="px-2 py-2 text-right">{m}</th>
+                  <th scope="col" className="bg-brand-tint/70 px-2 py-2 text-right text-sm font-semibold text-ink" title={QUOTA_HINT}>Quota</th>
+                  <th scope="col" className="px-2 py-2 text-right" title="Given last year (total)">Prior yr</th>
+                  {MONTH_SHORT.map((m, i) => (
+                    <th key={m} scope="col" className={cn("px-1.5 py-2 text-right font-normal", i === 0 && "border-l border-line")}>{m}</th>
                   ))}
-                  <th scope="col" className="px-2 py-2 text-right">YTD</th>
-                  <th scope="col" className="px-3 py-2 text-right" title="Everything given (full history) as a share of the entitlement">Given %</th>
+                  <th scope="col" className="border-l border-line px-2 py-2 text-right text-sm font-semibold text-ink" title={`Given in ${matrix.year} so far`}>YTD</th>
+                  <th scope="col" className="px-2 py-2 text-right text-sm font-semibold text-ink" title="Given over all loaded months: the figure compared with the quota">Total</th>
+                  <th scope="col" className="px-3 py-2 text-right text-sm font-semibold text-ink" title="Total as a % of the quota, with the units above (+) or below (−) it">vs Quota</th>
                 </tr>
               </thead>
               <tbody>
@@ -192,13 +221,14 @@ export function AccountMatrixPanel({
                         <div className="text-xs text-muted">{r.materialNo}</div>
                       </th>
                       {showGroup && <td className="max-w-32 truncate px-2 py-2 text-xs text-muted" title={r.itemGroup ?? undefined}>{r.itemGroup ?? "—"}</td>}
-                      <td className="px-2 py-2 text-right tabular-nums text-muted">{e ? e.expected.toLocaleString() : "—"}</td>
-                      <td className="px-2 py-2 text-right tabular-nums" title={splitTitle(r.prior)}>{fmt(value(r.prior))}</td>
+                      <td className="bg-brand-tint/30 px-2 py-2 text-right text-sm font-semibold tabular-nums text-ink">{e ? e.expected.toLocaleString() : "—"}</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted" title={splitTitle(r.prior)}>{fmt(value(r.prior))}</td>
                       {r.months.map((c, i) => (
-                        <td key={i} className="px-2 py-2 text-right tabular-nums" title={value(c) !== 0 ? splitTitle(c) : undefined}>{fmt(value(c))}</td>
+                        <td key={i} className={cn("px-1.5 py-2 text-right text-xs tabular-nums text-muted", i === 0 && "border-l border-line")} title={value(c) !== 0 ? splitTitle(c) : undefined}>{fmt(value(c))}</td>
                       ))}
-                      <td className="px-2 py-2 text-right font-medium tabular-nums" title={splitTitle(r.ytd)}>{fmt(value(r.ytd))}</td>
-                      <td className="px-3 py-2 text-right"><QuotaBadge entitlement={e} /></td>
+                      <td className="border-l border-line px-2 py-2 text-right text-sm font-semibold tabular-nums text-ink" title={splitTitle(r.ytd)}>{fmt(value(r.ytd))}</td>
+                      <td className="px-2 py-2 text-right text-sm font-semibold tabular-nums text-ink">{e ? givenFor(e, split).toLocaleString() : ""}</td>
+                      <td className="px-3 py-2 text-right"><VsQuota entitlement={e} split={split} /></td>
                     </tr>
                   );
                 })}
@@ -213,6 +243,7 @@ export function AccountMatrixPanel({
                     <td key={i} className="px-2 py-2 text-right tabular-nums">{fmt(value(c))}</td>
                   ))}
                   <td className="px-2 py-2 text-right tabular-nums">{fmt(value(matrix.totals.ytd))}</td>
+                  <td />
                   <td />
                 </tr>
               </tfoot>
@@ -233,13 +264,13 @@ function CardStat({ label, value, title, strong }: { label: string; value: strin
   );
 }
 
-/** Entitled / Bonus given / Net excess / Stand-alone FOC for the account, above the matrix. */
+/** Quota value / Bonus given / Net excess / Stand-alone FOC for the account, above the matrix. */
 function NetStrip({ net }: { net: NetSummary }) {
   const tile = "rounded-lg border border-line bg-canvas px-3 py-2";
   return (
     <dl className="mb-3 grid grid-cols-2 gap-2 text-xs lg:grid-cols-4" aria-label="Account quota summary">
       <div className={tile} title={`${net.entitledValue.toLocaleString()} THB at master prices, optional items excluded`}>
-        <dt className="text-muted">Entitled value</dt>
+        <dt className="text-muted" title={QUOTA_HINT}>Quota value</dt>
         <dd className="text-sm tabular-nums text-ink">{compactThb(net.entitledValue)} THB</dd>
       </div>
       <div className={tile} title={`${net.bonusValue.toLocaleString()} THB`}>

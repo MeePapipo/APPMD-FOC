@@ -38,7 +38,7 @@ export function AllowancePanel({ allowance, lines, disabled, onCap }: {
         {allowance.hasHistory
           ? `Given so far comes from Tableau billing up to ${allowance.asOf ?? "the last import"}; orders not billed yet are not counted.`
           : "This account has no give-away history in the import, so the allowance is based on this order alone."}{" "}
-        Entitled is cumulative and includes this order.
+        Quota is cumulative and includes this order.
       </p>
       {overCount > 0 ? (
         <p role="status" className="mt-2 rounded-lg bg-warning-tint px-3 py-2 text-sm text-warning">
@@ -53,7 +53,7 @@ export function AllowancePanel({ allowance, lines, disabled, onCap }: {
             <tr className="border-b border-line text-left text-xs text-muted">
               <th scope="col" className="py-2 pr-3">Item</th>
               <th scope="col" className="py-2 pr-3 text-right">Given so far</th>
-              <th scope="col" className="py-2 pr-3 text-right">Entitled (cumulative)</th>
+              <th scope="col" className="py-2 pr-3 text-right">Quota (cumulative)</th>
               <th scope="col" className="py-2 pr-3 text-right">Remaining</th>
               <th scope="col" className="py-2 pr-3 text-right">This order</th>
               <th scope="col" className="py-2 text-right">Check</th>

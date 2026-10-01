@@ -59,13 +59,13 @@ export function Sparkline({ values, year }: { values: number[]; year: number }) 
   );
 }
 
-/** Account-level Quota status: Over Quota / Within, the Bonus-vs-Entitled line, the % and the item-level count (information). */
+/** Account-level Quota status: Over Quota / Within, the Bonus-vs-Quota line, the % and the item-level count (information). */
 export function QuotaCell({ row, align = "right" }: { row: AccountRow; align?: "left" | "right" }) {
   const q = quotaSummary(row);
   if (!q) return <span className="text-xs text-muted">—</span>;
   const cls = align === "right" ? "items-end text-right" : "items-start text-left";
   return (
-    <span className={cn("inline-flex flex-col gap-0.5", cls)} title={`Bonus given ${money(row.net!.bonusValue)} THB vs entitlement ${money(row.net!.entitledValue)} THB, cumulative`}>
+    <span className={cn("inline-flex flex-col gap-0.5", cls)} title={`Bonus given ${money(row.net!.bonusValue)} THB vs quota ${money(row.net!.entitledValue)} THB, cumulative`}>
       {q.over ? <Badge tone="negative">Over Quota</Badge> : <span className="text-xs text-muted">Within</span>}
       <span className="text-[11px] tabular-nums text-muted">{q.line} · {q.pct}</span>
       {q.items && <span className="text-[11px] text-muted">{q.items}</span>}

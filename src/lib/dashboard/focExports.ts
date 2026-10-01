@@ -10,7 +10,8 @@ import { MONTH_SHORT, cellValue, type AccountMatrix, type Measure } from "./focA
 
 export const CSV_BOM = "﻿";
 
-export type EntitlementLite = Pick<EntitlementRow, "materialNo" | "expected" | "free" | "significant">;
+export type EntitlementLite = Pick<EntitlementRow, "materialNo" | "expected" | "free" | "significant"> &
+  Partial<Pick<EntitlementRow, "focQty" | "bonusQty">>;
 
 export type QuotaStatus = "Over Quota" | "Over" | "Within" | "";
 
@@ -26,7 +27,7 @@ export const quotaPct = (e: EntitlementLite | undefined): number | null =>
   e && e.expected > 0 ? (e.free / e.expected) * 100 : null;
 
 export const MATRIX_HEADERS = [
-  "Product code", "Product", "Entitled (cumulative units)", "Given % of entitlement", "Status",
+  "Product code", "Product", "Quota (cumulative units)", "Given % of quota", "Status",
   "Prior-year total", ...MONTH_SHORT, "YTD total",
 ];
 
