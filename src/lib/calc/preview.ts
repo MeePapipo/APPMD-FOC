@@ -24,6 +24,7 @@ export interface PreviewLine {
  */
 export interface AllowanceInfo {
   asOf: string | null; // "2026-08", the latest month in the FOC import
+  year: number | null; // the calendar year the allowance covers: the latest year in the import
   hasHistory: boolean; // false when the account has no rows in the import at all
   lines: Record<string, { given: number; entitled: number; remaining: number }>;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import type { AdjustedLine, AllowanceInfo } from "@/lib/calc/preview";
-import { Badge, Button } from "@/components/ui";
+import { Badge } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { ROW_HOVER } from "@/lib/hoverStyles";
 
@@ -11,14 +11,12 @@ const n = (x: number) => x.toLocaleString();
  * Cumulative give-away allowance for the chosen account: what Tableau says was
  * already given, what the account is entitled to in total once this order is
  * counted, and what is left. A line whose quantity on this order is more than
- * what is left would push the account over its quota; the rep can cap it in
- * one click, or leave it as a deliberate choice.
+ * what is left would push the account over its quota; it is flagged, and the
+ * rep decides what to do (the quantity is never changed for them).
  */
-export function AllowancePanel({ allowance, lines, disabled, onCap }: {
+export function AllowancePanel({ allowance, lines }: {
   allowance: AllowanceInfo;
   lines: AdjustedLine[];
-  disabled: boolean;
-  onCap: (line: AdjustedLine, target: number) => void;
 }) {
   const rows = lines
     .filter((line) => allowance.lines[line.materialNo])
@@ -36,9 +34,9 @@ export function AllowancePanel({ allowance, lines, disabled, onCap }: {
       <h3 id="allowance-heading" className="text-sm font-semibold text-ink">Remaining allowance for this account</h3>
       <p className="mt-1 text-xs text-muted">
         {allowance.hasHistory
-          ? `Given so far comes from Tableau billing up to ${allowance.asOf ?? "the last import"}; orders not billed yet are not counted.`
-          : "This account has no give-away history in the import, so the allowance is based on this order alone."}{" "}
-        Quota is cumulative and includes this order.
+          ? `Actual FOC+Bonus comes from Tableau billing for ${allowance.year ?? "the latest year"}, up to ${allowance.asOf ?? "the last import"}; orders not billed yet are not counted.`
+          : `This account has no give-away in ${allowance.year ?? "the latest year"} in the import, so the allowance is based on this order alone.`}{" "}
+        The quota is what {allowance.year ? `${allowance.year}’s` : "that year’s"} reagent sales earn, and includes this order.
       </p>
       {overCount > 0 ? (
         <p role="status" className="mt-2 rounded-lg bg-warning-tint px-3 py-2 text-sm text-warning">
@@ -52,8 +50,8 @@ export function AllowancePanel({ allowance, lines, disabled, onCap }: {
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">
               <th scope="col" className="py-2 pr-3">Item</th>
-              <th scope="col" className="py-2 pr-3 text-right">Given so far</th>
-              <th scope="col" className="py-2 pr-3 text-right">Quota (cumulative)</th>
+              <th scope="col" className="py-2 pr-3 text-right">Actual FOC+Bonus <span className="font-normal">(previous bills{allowance.year ? `, ${allowance.year}` : ""})</span></th>
+              <th scope="col" className="py-2 pr-3 text-right">Quota{allowance.year ? ` ${allowance.year}` : ""}</th>
               <th scope="col" className="py-2 pr-3 text-right">Remaining</th>
               <th scope="col" className="py-2 pr-3 text-right">This order</th>
               <th scope="col" className="py-2 text-right">Check</th>
@@ -68,16 +66,7 @@ export function AllowancePanel({ allowance, lines, disabled, onCap }: {
                 <td className={cn("py-2 pr-3 text-right font-medium", remaining < 0 ? "text-negative" : "text-ink")}>{n(remaining)}</td>
                 <td className="py-2 pr-3 text-right font-medium text-ink">{n(line.finalQty)}</td>
                 <td className="py-2 text-right">
-                  {over > 0 ? (
-                    <span className="inline-flex items-center justify-end gap-2">
-                      <Badge tone="negative">Over by {n(over)}</Badge>
-                      <Button type="button" variant="secondary" size="sm" disabled={disabled} onClick={() => onCap(line, Math.max(remaining, 0))}>
-                        Cap at {n(Math.max(remaining, 0))}
-                      </Button>
-                    </span>
-                  ) : (
-                    <Badge tone="positive">Within</Badge>
-                  )}
+                  {over > 0 ? <Badge tone="negative">Over by {n(over)}</Badge> : <Badge tone="positive">Within</Badge>}
                 </td>
               </tr>
             ))}

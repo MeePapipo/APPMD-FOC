@@ -6,7 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import type { AccountDTO, AdditionalFocDTO, AssayDTO } from "@/lib/dto";
 import type { SysCode, TestsBySystem } from "@/lib/calc/types";
 import { computeReagents } from "@/lib/calc/reagents";
-import { deltaForTargetQty, needsComment, type Adjustment, type AdjustmentMap } from "@/lib/calc/adjust";
+import { needsComment, type Adjustment, type AdjustmentMap } from "@/lib/calc/adjust";
 import { AccountPicker } from "./AccountPicker";
 import { Button } from "@/components/ui";
 import { selectPreview, type ManualFocLine, type PreviewResult } from "@/lib/calc/preview";
@@ -345,8 +345,6 @@ export function Calculator({ accounts, assays, additionalFoc }: {
               <AllowancePanel
                 allowance={preview.allowance}
                 lines={[...selected.required, ...selected.selectedOptional]}
-                disabled={stale || busy}
-                onCap={(line, target) => adjustLine(line.materialNo, { adjust: deltaForTargetQty(target, line.afterStockQty) })}
               />
             </div>
           )}
