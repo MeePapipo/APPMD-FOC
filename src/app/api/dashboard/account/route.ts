@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   const name = params.get("name");
   if (!name) return Response.json({ error: "Missing account name" }, { status: 400 });
 
-  const detail = await loadAccountDetail(name, parseItemGroups(params.get("ig") ?? undefined));
+  const detail = await loadAccountDetail(name, parseItemGroups(params.get("ig") ?? undefined), params.get("pl3") || null);
   if (!detail) return Response.json({ error: "Account not found" }, { status: 404 });
   const { rows, entitlement } = detail;
 
@@ -42,6 +42,7 @@ export async function GET(request: Request) {
     productsGiven: accountProductsGiven(rows, 10),
     productsSold: withVolume(accountProductsSold(rows, 10), detail.packByMaterial),
     entitlement,
+    quotaMode: detail.quotaMode,
     // Quota and what was given in the shown year, per item with a quota rule (what the matrix compares).
     yearQuota: detail.yearQuotaFor(year),
     years,

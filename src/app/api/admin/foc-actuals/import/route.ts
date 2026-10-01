@@ -16,6 +16,8 @@ const rowSchema = z.object({
   team: z.string().max(100).nullable(),
   rep: z.string().max(200).nullable(),
   category: z.string().max(100).nullable(),
+  product: z.string().max(100).nullable(),
+  annualQuota: z.number().finite().nullable(),
   accountName: z.string().min(1).max(300),
   materialNo: z.string().max(64),
   productName: z.string().min(1).max(300),
@@ -28,7 +30,7 @@ const bodySchema = z.object({
 });
 
 const SELECT = {
-  year: true, month: true, team: true, rep: true, category: true, accountName: true, materialNo: true, productName: true,
+  year: true, month: true, team: true, rep: true, category: true, product: true, annualQuota: true, accountName: true, materialNo: true, productName: true,
   revenue: true, revenueQty: true, soldQty: true, focCost: true, focQty: true, bonusCost: true, bonusQty: true, totalCost: true, tests: true,
 } as const;
 
@@ -42,10 +44,17 @@ export async function POST(request: Request) {
   }
   const { rows, updateChanged = false } = parsed.data;
 
-  // One query for everything stored in the chunk's months, not one per row.
-  const periods = [...new Map(rows.map((r) => [`${r.year}|${r.month}`, { year: r.year, month: r.month }])).values()];
+  // One query for what is already stored for these accounts in these months (not one per row,
+  // and not the whole month: a month holds ~20,000 rows once every Product is imported).
+  const namesByPeriod = new Map<string, { year: number; month: number; names: Set<string> }>();
+  for (const r of rows) {
+    const key = `${r.year}|${r.month}`;
+    const entry = namesByPeriod.get(key) ?? { year: r.year, month: r.month, names: new Set<string>() };
+    entry.names.add(r.accountName);
+    namesByPeriod.set(key, entry);
+  }
   const existing = (await prisma.focActual.findMany({
-    where: { OR: periods },
+    where: { OR: [...namesByPeriod.values()].map((p) => ({ year: p.year, month: p.month, accountName: { in: [...p.names] } })) },
     select: SELECT,
   })) as FocActualRow[];
 
@@ -66,7 +75,7 @@ export async function POST(request: Request) {
               year: row.year, month: row.month, accountName: row.accountName, materialNo: row.materialNo, productName: row.productName,
             },
           },
-          data: { team: row.team, rep: row.rep, category: row.category },
+          data: { team: row.team, rep: row.rep, category: row.category, product: row.product, annualQuota: row.annualQuota },
         }),
       ),
     );

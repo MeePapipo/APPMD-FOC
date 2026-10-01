@@ -229,3 +229,33 @@ describe("parseFocActualsCsv - several periods in one file", () => {
     expect(rows.map((r) => `${r.year}-${r.month}:${r.focQty}`).sort()).toEqual(["2025-1:1", "2025-2:2", "2026-1:3", "2026-2:4"]);
   });
 });
+
+describe("parseFocActualsCsv - Product and annual quota", () => {
+  const periods: Period[] = [{ be: "2569", thai: "มกราคม" }, { be: "2569", thai: "กุมภาพันธ์" }];
+  const csv = buildMultiCsv(periods, [
+    {
+      dims: dims("CORE LAB", "LAB A", "MAT1 - Control"),
+      // the annual quota is repeated on each month that has activity
+      values: [{ "FOC Quantity": 1, "Quota(Year)": 18 }, { "FOC Quantity": 2, "Quota(Year)": 18 }],
+    },
+    { dims: dims("PATHOLOGY LAB", "LAB B", "MAT2 - Slide"), values: [{ "FOC Quantity": 4 }, { "Selling Quantity": 3 }] },
+  ]);
+
+  it("keeps the Product (PL3) on every row", () => {
+    const { rows } = parseFocActualsCsv(csv);
+    expect(rows.filter((r) => r.materialNo === "MAT1").every((r) => r.product === "CORE LAB")).toBe(true);
+    expect(rows.find((r) => r.materialNo === "MAT2")?.product).toBe("PATHOLOGY LAB");
+  });
+
+  it("reads Quota(Year) as the annual figure, not the sum of its repeats", () => {
+    const { rows } = parseFocActualsCsv(csv);
+    const mat1 = rows.filter((r) => r.materialNo === "MAT1");
+    expect(mat1).toHaveLength(2);
+    expect(mat1.map((r) => r.annualQuota)).toEqual([18, 18]);
+  });
+
+  it("is null where no quota is set (a Product without quotas, such as Pathology here)", () => {
+    const { rows } = parseFocActualsCsv(csv);
+    expect(rows.find((r) => r.materialNo === "MAT2")?.annualQuota).toBeNull();
+  });
+});

@@ -1,7 +1,7 @@
 import { Card, Badge } from "@/components/ui";
 import { ROW_HOVER } from "@/lib/hoverStyles";
 import { cn } from "@/lib/cn";
-import type { OverQuotaAccount, StandaloneFocAccount } from "@/lib/dashboard/alertLists";
+import type { AnnualOverAccount, OverQuotaAccount, StandaloneFocAccount } from "@/lib/dashboard/alertLists";
 import { formatOverPct } from "@/lib/dashboard/accountQuota";
 import type { FinanceRow } from "@/lib/dashboard/focFinance";
 import { RatioBadge } from "./RatioBadge";
@@ -25,11 +25,16 @@ const Overflow = ({ total }: { total: number }) =>
  * cumulative over each account's history, same as the drawer.
  */
 export function AlertsView({
+  mode = "formula",
+  annualOver = [],
   overQuota,
   standalone,
   byMonth,
   byTeam,
 }: {
+  /** Annual-quota Products list items over their yearly quota instead of the net rule and stand-alone FOC. */
+  mode?: "formula" | "annual";
+  annualOver?: AnnualOverAccount[];
   overQuota: OverQuotaAccount[];
   standalone: StandaloneFocAccount[];
   byMonth: FinanceRow[];
@@ -37,8 +42,11 @@ export function AlertsView({
 }) {
   const over = overQuota.slice(0, MAX_ROWS);
   const foc = standalone.slice(0, MAX_ROWS);
+  const annual = mode === "annual";
   return (
     <div className="space-y-6">
+      {annual && <AnnualOverCard rows={annualOver} />}
+      {!annual && (<>
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-semibold text-ink">Accounts over quota</h2>
         <p className="mb-3 text-xs text-muted">
@@ -146,12 +154,81 @@ export function AlertsView({
           </>
         )}
       </Card>
+      </>)}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <FinanceTable title="Cost by month" firstHeader="Month" rows={byMonth} />
         <FinanceTable title="Cost by team" firstHeader="Team" rows={byTeam} />
       </div>
     </div>
+  );
+}
+
+/** Annual-quota Products: accounts with items given beyond their yearly quota, by excess units. */
+function AnnualOverCard({ rows }: { rows: AnnualOverAccount[] }) {
+  const shown = rows.slice(0, MAX_ROWS);
+  return (
+    <Card className="p-4">
+      <h2 className="mb-1 text-sm font-semibold text-ink">Accounts over quota</h2>
+      <p className="mb-3 text-xs text-muted">
+        Items given (FOC + Bonus units in the year) beyond their yearly quota set in Tableau, past the minimum units in Settings, by excess units.
+      </p>
+      {rows.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted">No accounts over quota for this filter.</p>
+      ) : (
+        <>
+          <Overflow total={rows.length} />
+          <div className="divide-y divide-line border-y border-line md:hidden">
+            {shown.map((r) => (
+              <div key={r.accountName} className="py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-medium text-ink">{r.accountName}</h3>
+                    <p className="text-xs text-muted">{r.team ?? "—"}</p>
+                  </div>
+                  <span className="shrink-0 text-sm font-medium tabular-nums text-negative">+{money(r.excessUnits)}</span>
+                </div>
+                <p className="mt-1 text-xs tabular-nums text-muted">{r.itemsOver} of {r.itemsWithQuota} items over quota</p>
+                <p className="mt-1 text-xs text-muted">{r.topItems.map((i) => `${i.productName} (+${i.diff.toLocaleString()})`).join(" · ")}</p>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[48rem] text-sm">
+              <thead className="bg-brand-tint text-xs text-muted">
+                <tr className="border-y border-line text-left">
+                  <th scope="col" className="px-3 py-2">Account</th>
+                  <th scope="col" className="px-3 py-2 text-right">Items over / with quota</th>
+                  <th scope="col" className="px-3 py-2 text-right">Excess units</th>
+                  <th scope="col" className="px-3 py-2">Worst items</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => (
+                  <tr key={r.accountName} className={cn("border-b border-line/60 align-top", ROW_HOVER)}>
+                    <td className="max-w-64 px-3 py-2">
+                      <div className="truncate" title={r.accountName}>{r.accountName}</div>
+                      {r.team && <div className="text-xs text-muted">{r.team}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{r.itemsOver} / {r.itemsWithQuota}</td>
+                    <td className="px-3 py-2 text-right font-medium tabular-nums text-negative">+{money(r.excessUnits)}</td>
+                    <td className="px-3 py-2 text-xs text-muted">
+                      <ul className="space-y-0.5">
+                        {r.topItems.map((i) => (
+                          <li key={i.materialNo} title={`Given ${i.given.toLocaleString()} of ${i.quota.toLocaleString()}`}>
+                            <span className="text-ink">{i.productName}</span> +{i.diff.toLocaleString()} · {i.pct === null ? "" : `${Math.round(i.pct)}%`}
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Card>
   );
 }
 

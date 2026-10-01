@@ -168,7 +168,10 @@ model TpbSettings {
 /// the whole company; MD's dashboard is Molecular only. One row.
 model FocImportSettings {
   id                  String   @id @default("singleton")
-  allowedProductLines String[] @default(["MOLECULAR LAB"])
+  allowedProductLines String[] @default(["MOLECULAR LAB", "PATHOLOGY LAB", "CORE LAB"])
+  // Products whose quota is the cumulative Calculator formula; every other Product
+  // uses the annual Quota(Year) from the Tableau export.
+  formulaProducts     String[] @default(["MOLECULAR LAB"])
   updatedAt           DateTime @updatedAt
 }
 
@@ -472,6 +475,8 @@ model FocActual {
   year        Int
   month       Int
   team        String? // TLevel3 from the source export
+  product     String? // "Product": Tableau PL3 (MOLECULAR LAB, CORE LAB, ...); null on rows imported before it was kept = Molecular Lab
+  annualQuota Float? // Tableau Quota(Year): the yearly quota set for this account x item, repeated on every month that has activity
   category    String? // "Item Group": Tableau Product Category Text (or classified by product name); null on rows imported before it was stored
   rep         String? // TLevel6 from the source export
   accountName String // Ship-to account name, cleaned (HOSP. -> HOSPITAL)
@@ -489,7 +494,6 @@ model FocActual {
   importedAt  DateTime @updatedAt
 
   @@unique([year, month, accountName, materialNo, productName])
-  @@index([year, month])
 }
 
 /// Generic audit trail for admin mutations and rep adjustments.

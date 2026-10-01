@@ -22,6 +22,8 @@ export function AccountDrawer({
   year,
   measure,
   itemGroups,
+  product,
+  quotaMode,
   suspended,
   onClose,
   onStep,
@@ -34,6 +36,9 @@ export function AccountDrawer({
   measure: Measure;
   /** The `ig` URL param ("|"-separated Item Groups), "" = default groups. */
   itemGroups: string;
+  /** The `pl3` URL param, "" = default Product. */
+  product: string;
+  quotaMode: "formula" | "annual";
   suspended: boolean;
   onClose: () => void;
   onStep: (delta: -1 | 1) => void;
@@ -113,7 +118,7 @@ export function AccountDrawer({
           <p className="mt-2 hidden text-[11px] text-muted md:block">Esc closes · ↑ ↓ or J K for the previous / next account</p>
         </div>
         <div className="px-3 md:px-5">
-          <AccountMatrixPanel key={`${row.accountName}|${year}|${itemGroups}`} name={row.accountName} year={year} measure={measure} itemGroups={itemGroups} onFullDetail={onFullDetail} />
+          <AccountMatrixPanel key={`${row.accountName}|${year}|${itemGroups}|${product}`} name={row.accountName} year={year} measure={measure} itemGroups={itemGroups} product={product} quotaMode={quotaMode} onFullDetail={onFullDetail} />
         </div>
       </aside>
     </div>

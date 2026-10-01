@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   if (format !== "csv" && format !== "pdf") return Response.json({ error: "format must be csv or pdf" }, { status: 400 });
   const measure: Measure = params.get("measure") === "cost" ? "cost" : "qty";
 
-  const detail = await loadAccountDetail(name, parseItemGroups(params.get("ig") ?? undefined));
+  const detail = await loadAccountDetail(name, parseItemGroups(params.get("ig") ?? undefined), params.get("pl3") || null);
   if (!detail) return Response.json({ error: "Account not found" }, { status: 404 });
 
   const askedYear = Number(params.get("year"));

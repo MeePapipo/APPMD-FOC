@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
+import { productLabel } from "@/lib/dashboard/accountQuota";
 
 // FocActual.team stores the raw TLevel3 string from the Tableau source, not
 // this app's own Team enum — hence the "ateam" param name and these literal
@@ -54,6 +55,10 @@ export function ActualsFilters({
   accountNames,
   accountCount,
   itemGroupChoices,
+  product,
+  defaultProduct,
+  productChoices,
+  quotaMode,
 }: {
   view: "accounts" | "overview" | "alerts";
   years: number[];
@@ -61,6 +66,11 @@ export function ActualsFilters({
   accountCount: number;
   /** Every Item Group present in the data. */
   itemGroupChoices: string[];
+  /** The Product shown, the default one (left out of the URL) and every Product in the data. */
+  product: string;
+  defaultProduct: string;
+  productChoices: string[];
+  quotaMode: "formula" | "annual";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -73,6 +83,16 @@ export function ActualsFilters({
     router.push(`${pathname}?${params.toString()}`);
   }
 
+  // Another Product has other accounts and Item Groups, so the account, Item Group and flag picks do not carry over.
+  function setProduct(value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value && value !== defaultProduct) params.set("pl3", value);
+    else params.delete("pl3");
+    for (const k of ["acct", "ig", "sig", "q"]) params.delete(k);
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  const annual = quotaMode === "annual";
   const get = (key: string) => searchParams.get(key) ?? "";
   const team = get("ateam");
   const measure = get("m") === "cost" ? "cost" : "qty";
@@ -80,6 +100,12 @@ export function ActualsFilters({
   return (
     <div className="mb-6 space-y-3">
       <div className="flex flex-wrap items-center gap-3">
+        <select aria-label="Product" value={product} onChange={(e) => setProduct(e.target.value)} className={selectClass}>
+          {(productChoices.includes(product) ? productChoices : [product, ...productChoices]).map((p) => (
+            <option key={p} value={p}>{productLabel(p)}</option>
+          ))}
+        </select>
+
         <select aria-label="Year" value={get("year")} onChange={(e) => setParam("year", e.target.value)} className={selectClass}>
           <option value="">All years</option>
           {years.map((y) => (
@@ -115,10 +141,16 @@ export function ActualsFilters({
           ))}
         </select>
 
-        <ItemGroupFilter choices={itemGroupChoices} value={get("ig")} onChange={(v) => setParam("ig", v)} />
+        <ItemGroupFilter annual={annual} choices={itemGroupChoices} value={get("ig")} onChange={(v) => setParam("ig", v)} />
 
         <span className="ml-auto text-xs text-muted">{accountCount.toLocaleString()} ship-to account(s)</span>
       </div>
+
+      {annual && (
+        <p className="text-xs text-muted">
+          Quota = the yearly quota set in Tableau (Quota(Year)); % = FOC + Bonus given in the year / quota
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {TEAM_CHIPS.map((t) => (
@@ -155,12 +187,12 @@ export function ActualsFilters({
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
-                aria-label="Flagged accounts only: over quota or stand-alone FOC past its threshold"
+                aria-label={annual ? "Accounts with an item over its yearly quota only" : "Flagged accounts only: over quota or stand-alone FOC past its threshold"}
                 checked={get("sig") === "1"}
                 onChange={(e) => setParam("sig", e.target.checked ? "1" : "")}
                 className="h-4 w-4 rounded border-line-strong accent-brand"
               />
-              Flagged only
+              {annual ? "Over Quota only" : "Flagged only"}
             </label>
           )}
           {view === "overview" && (
@@ -183,9 +215,10 @@ export function ActualsFilters({
 const DEFAULTS: readonly string[] = DEFAULT_ITEM_GROUPS;
 
 /** Item Group picker: a `<details>` of checkboxes writing the "|"-separated `ig` param (empty = the default groups). */
-function ItemGroupFilter({ choices, value, onChange }: { choices: string[]; value: string; onChange: (v: string) => void }) {
+function ItemGroupFilter({ choices, value, onChange, annual }: { choices: string[]; value: string; onChange: (v: string) => void; annual: boolean }) {
   const picked = value.split("|").map((x) => x.trim()).filter(Boolean);
-  const defaults = choices.filter((c) => DEFAULTS.includes(c));
+  // Annual-quota Products show every group by default, so the shortcut means All.
+  const defaults = annual ? choices : choices.filter((c) => DEFAULTS.includes(c));
   const current = picked.length > 0 ? picked : defaults;
   const [open, setOpen] = useState(false);
 
@@ -206,13 +239,13 @@ function ItemGroupFilter({ choices, value, onChange }: { choices: string[]; valu
       <summary className={cn(selectClass, "flex cursor-pointer list-none items-center gap-2 select-none")} aria-label="Item Group">
         Item Group
         <span className="rounded-full bg-brand-tint px-1.5 text-xs font-medium tabular-nums text-brand">
-          {picked.length > 0 ? picked.length : "Default"}
+          {picked.length > 0 ? picked.length : annual ? "All" : "Default"}
         </span>
       </summary>
       <div className="absolute left-0 z-30 mt-1 w-64 rounded-lg border border-line-strong bg-surface p-3 shadow-lg">
         <div className="mb-2 flex gap-2 text-xs">
-          <button type="button" onClick={() => onChange("")} className="rounded-full border border-line-strong px-2.5 py-0.5 text-ink hover:bg-canvas">Default</button>
-          <button type="button" onClick={() => onChange(choices.join("|"))} className="rounded-full border border-line-strong px-2.5 py-0.5 text-ink hover:bg-canvas">All</button>
+          <button type="button" onClick={() => onChange("")} className="rounded-full border border-line-strong px-2.5 py-0.5 text-ink hover:bg-canvas">{annual ? "All" : "Default"}</button>
+          {!annual && <button type="button" onClick={() => onChange(choices.join("|"))} className="rounded-full border border-line-strong px-2.5 py-0.5 text-ink hover:bg-canvas">All</button>}
           <button type="button" onClick={() => setOpen(false)} className="ml-auto text-muted hover:text-ink">Close</button>
         </div>
         <ul className="max-h-64 space-y-1 overflow-y-auto">

@@ -1,17 +1,24 @@
 import { prisma } from "@/lib/prisma";
 import { focAccountRows, type FocActualFact } from "./focActualsAggregate";
 import { computeAccountAlerts, type AccountAlert } from "./accountAlerts";
-import { inPeriodScope, parseItemGroups, type DashboardParams } from "./filters";
+import { inPeriodScope, matrixYear, parseItemGroups, type DashboardParams } from "./filters";
 import { inItemGroups } from "./itemGroups";
+import { LEGACY_PRODUCT, loadProductSettings } from "./importSettings";
+import { annualSummaries, type AnnualSummary } from "./annualQuota";
+import { loadAlertThresholds } from "./alertSettings";
 
 /** Every column any Dashboard view or export reads. */
 const SCOPE_SELECT = {
   year: true, month: true, team: true, rep: true, category: true, accountName: true,
   materialNo: true, productName: true, revenue: true, focCost: true, bonusCost: true,
   soldQty: true, revenueQty: true, focQty: true, bonusQty: true,
+  product: true, annualQuota: true,
 } as const;
 
-export type ScopeFact = FocActualFact & { rep: string | null; category: string | null; revenueQty: number; focQty: number; bonusQty: number };
+export type ScopeFact = FocActualFact & {
+  rep: string | null; category: string | null; revenueQty: number; focQty: number; bonusQty: number;
+  product: string | null; annualQuota: number | null;
+};
 
 export type AccountScopeRow = ReturnType<typeof focAccountRows>[number] & {
   /** Item-level Over Quota (information). */
@@ -19,6 +26,8 @@ export type AccountScopeRow = ReturnType<typeof focAccountRows>[number] & {
   overCost: number;
   /** Account-level verdict from the net rule; null when alerts were not computed. */
   net: AccountAlert["net"] | null;
+  /** Annual-quota Products: this year's items with a quota and how many are over it; null for formula Products. */
+  annual: AnnualSummary | null;
   flagged: boolean;
 };
 
@@ -30,37 +39,64 @@ export type AccountScopeRow = ReturnType<typeof focAccountRows>[number] & {
  * import row, not the period filter.
  */
 export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boolean } = { alerts: true }) {
-  const allActuals = (await prisma.focActual.findMany({ select: SCOPE_SELECT })) as ScopeFact[];
+  const settings = await loadProductSettings();
+  // The Product filter: absent = the first formula Product (Molecular Lab). Rows stored before the
+  // Product was kept have none and belong to Molecular Lab.
+  const product = p.pl3 || settings.formula[0] || LEGACY_PRODUCT;
+  const quotaMode: "formula" | "annual" = settings.formula.includes(product) ? "formula" : "annual";
+  const productWhere = product === LEGACY_PRODUCT ? { OR: [{ product }, { product: null }] } : { product };
+  const [allActuals, productGroups] = await Promise.all([
+    prisma.focActual.findMany({ where: productWhere, select: SCOPE_SELECT }) as Promise<ScopeFact[]>,
+    prisma.focActual.groupBy({ by: ["product"] }),
+  ]);
+  const productChoices = [...new Set(productGroups.map((g) => g.product ?? LEGACY_PRODUCT))].sort();
   const years = [...new Set(allActuals.map((f) => f.year))].sort((a, b) => b - a);
   const itemGroups = parseItemGroups(p.ig);
-  const periodRows = allActuals.filter((f) => inPeriodScope(f, p) && inItemGroups(f.category, itemGroups));
+  // Molecular Lab's default is the four Item Groups the formula knows; the annual-quota Products
+  // show every group until one is picked.
+  const groupOk = (f: ScopeFact) =>
+    quotaMode === "formula" ? inItemGroups(f.category, itemGroups) : !itemGroups || (f.category !== null && itemGroups.includes(f.category));
+  const periodRows = allActuals.filter((f) => inPeriodScope(f, p) && groupOk(f));
   // Every Item Group present, for the filter's choices (null = imported before groups were stored).
   const itemGroupChoices = [...new Set(allActuals.map((f) => f.category).filter((c): c is string => c !== null))].sort();
 
   const allAccountRows = focAccountRows(periodRows);
   const accountNames = allAccountRows.map((a) => a.accountName).sort((a, b) => a.localeCompare(b));
   const needAlerts = opts.alerts || p.sig === "1";
-  // Quota covers the formula's own Item Groups, whatever the view's Item Group filter says.
-  const alerts: Map<string, AccountAlert> = needAlerts ? await computeAccountAlerts(allActuals.filter((f) => inItemGroups(f.category, null))) : new Map();
+  const quotaYear = matrixYear(p, years);
+  // Formula Products: the net rule over the formula's own Item Groups, whatever the filter says.
+  const alerts: Map<string, AccountAlert> =
+    needAlerts && quotaMode === "formula" ? await computeAccountAlerts(allActuals.filter((f) => inItemGroups(f.category, null))) : new Map();
+  // Annual-quota Products: items over the yearly quota in the shown year.
+  const annualAlerts =
+    needAlerts && quotaMode === "annual"
+      ? annualSummaries(
+          allActuals.filter(groupOk).map((f) => ({ ...f, annualQuota: f.annualQuota })),
+          quotaYear,
+          (await loadAlertThresholds()).minOverUnits,
+        )
+      : new Map<string, AnnualSummary & { items: import("./annualQuota").AnnualItem[] }>();
 
+  const isFlagged = (name: string) => (quotaMode === "formula" ? alerts.get(name)?.flagged === true : (annualAlerts.get(name)?.itemsOver ?? 0) > 0);
   let accountRows: AccountScopeRow[] = allAccountRows
     .filter(
       (a) =>
         (!p.q || a.accountName === p.q) &&
         (p.hi !== "1" || a.ratio > 0.2) &&
         (p.xna !== "1" || Number.isFinite(a.ratio)) &&
-        (p.sig !== "1" || alerts.get(a.accountName)?.flagged === true),
+        (p.sig !== "1" || isFlagged(a.accountName)),
     )
     .map((a) => ({
       ...a,
       overCount: alerts.get(a.accountName)?.count ?? 0,
       overCost: alerts.get(a.accountName)?.cost ?? 0,
       net: alerts.get(a.accountName)?.net ?? null,
-      flagged: alerts.get(a.accountName)?.flagged === true,
+      annual: quotaMode === "annual" ? (annualAlerts.get(a.accountName) ?? { itemsWithQuota: 0, itemsOver: 0, excessUnits: 0 }) : null,
+      flagged: isFlagged(a.accountName),
     }));
   if (p.top === "1") accountRows = [...accountRows].sort((a, b) => b.totalCost - a.totalCost).slice(0, 10);
 
   const inScope = new Set(accountRows.map((a) => a.accountName));
   const facts = periodRows.filter((f) => inScope.has(f.accountName));
-  return { allActuals, years, periodRows, accountNames, accountRows, facts, alerts, itemGroupChoices, itemGroups };
+  return { allActuals, years, periodRows, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, itemGroups, product, productChoices, quotaMode, quotaYear };
 }

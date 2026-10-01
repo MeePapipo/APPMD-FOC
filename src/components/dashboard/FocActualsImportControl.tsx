@@ -7,7 +7,9 @@ import { describePeriods, periodLabel } from "@/lib/dashboard/period";
 import type { DataThrough } from "@/lib/dashboard/dataThrough";
 import { Button } from "@/components/ui";
 
-const CHUNK_ROWS = 3000;
+// Rows go up sorted by (year, month, account) so each chunk touches few accounts and the server
+// only compares them with what is stored for those accounts in those months.
+const CHUNK_ROWS = 4000;
 
 type Preview = { fileName: string; parsed: ParseResult };
 type Totals = { fresh: number; unchanged: number; relabelled: number; changed: number; updated: number };
@@ -47,6 +49,7 @@ export function FocActualsImportControl({ allowedProductLines, dataThrough }: { 
       await new Promise((resolve) => setTimeout(resolve, 30));
       const parsed = parseFocActualsCsv(new Uint8Array(await file.arrayBuffer()), { allowedProductLines });
       if (parsed.rows.length === 0) throw new Error(`No rows for the Product ${allowedProductLines.join(", ")} in this file.`);
+      parsed.rows.sort((a, b) => a.year - b.year || a.month - b.month || (a.accountName < b.accountName ? -1 : a.accountName > b.accountName ? 1 : 0));
       setPreview({ fileName: file.name, parsed });
       setPhase("preview");
     } catch (cause) {
@@ -99,7 +102,7 @@ export function FocActualsImportControl({ allowedProductLines, dataThrough }: { 
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-ink">Import from Tableau (admin only)</p>
           <p className="text-xs text-muted">
-            Upload the &quot;Data for FOC&quot; crosstab export (one or many months, one or two years, any Product). Only the Product {allowedProductLines.join(", ")} is kept, with every Item Group; rows already stored are skipped, so overlapping months are safe.
+            Upload the &quot;Data for FOC&quot; crosstab export (one or many months, one or two years, any Product). Only these Products are kept: {allowedProductLines.join(", ")} (every Item Group); rows already stored are skipped, so overlapping months are safe. A file with several Products and many months can take a minute and about 1 GB of browser memory to read.
             {current ? ` Data currently runs through ${current}.` : " No data loaded yet."}
           </p>
         </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactThb, formatOverPct, quotaSortValue, quotaSummary } from "./accountQuota";
+import { annualQuotaLine, annualSortValue, annualYearSummary, compactThb, formatOverPct, productLabel, quotaSortValue, quotaSummary } from "./accountQuota";
 
 const net = (o: Partial<import("./entitlement").NetSummary> = {}) => ({
   entitledValue: 800_000, bonusValue: 1_234_567, excessValue: 434_567, overPct: 54.3, over: true, focStandaloneCost: 0, focFlagged: false, ...o,
@@ -30,5 +30,25 @@ describe("account quota helpers", () => {
     const none = quotaSortValue({ net: null, flagged: false });
     expect(flagged).toBeGreaterThan(big);
     expect(big).toBeGreaterThan(none);
+  });
+});
+
+describe("annual-quota helpers", () => {
+  it("summarises the matrix year", () => {
+    const s = annualYearSummary({
+      A: { quota: 10, free: 14, significant: true },
+      B: { quota: 10, free: 3, significant: false },
+      C: { quota: 0, free: 5, significant: false },
+    });
+    expect(s).toEqual({ itemsWithQuota: 2, itemsOver: 1, excessUnits: 4 });
+  });
+  it("words the list line and sorts by items over, then excess", () => {
+    expect(annualQuotaLine({ itemsWithQuota: 14, itemsOver: 2, excessUnits: 9 })).toBe("2 of 14 items over quota");
+    expect(annualQuotaLine({ itemsWithQuota: 0, itemsOver: 0, excessUnits: 0 })).toBeNull();
+    expect(annualSortValue({ itemsWithQuota: 5, itemsOver: 2, excessUnits: 1 })).toBeGreaterThan(annualSortValue({ itemsWithQuota: 5, itemsOver: 1, excessUnits: 900 }));
+    expect(quotaSortValue({ net: null, flagged: true, annual: { itemsWithQuota: 1, itemsOver: 1, excessUnits: 3 } })).toBe(1e12 + 3);
+  });
+  it("title-cases a Product", () => {
+    expect(productLabel("MOLECULAR LAB")).toBe("Molecular Lab");
   });
 });

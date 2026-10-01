@@ -13,20 +13,22 @@ export function sameFigures(a: FocActualRow, b: FocActualRow): boolean {
   return NUMERIC.every((k) => a[k] === b[k]);
 }
 
-/** Same figures and same labels (team, rep, Item Group). */
+/** Same figures and same labels (team, rep, Item Group, Product, annual quota). */
 export function sameRow(a: FocActualRow, b: FocActualRow): boolean {
   return (
     sameFigures(a, b) &&
     (a.team ?? null) === (b.team ?? null) &&
     (a.rep ?? null) === (b.rep ?? null) &&
-    (a.category ?? null) === (b.category ?? null)
+    (a.category ?? null) === (b.category ?? null) &&
+    (a.product ?? null) === (b.product ?? null) &&
+    (a.annualQuota ?? null) === (b.annualQuota ?? null)
   );
 }
 
 export type Classified = {
   fresh: FocActualRow[]; // not in the database yet
   unchanged: number; // already there, identical
-  /** Same key and figures, but a label moved (rep reassigned, or the Item Group was not stored yet): safe to refresh. */
+  /** Same key and figures, but a label moved (rep reassigned, Item Group/Product not stored yet, a quota set or changed): safe to refresh. */
   relabelled: FocActualRow[];
   changed: { row: FocActualRow; before: FocActualRow }[]; // same key, different figures
 };

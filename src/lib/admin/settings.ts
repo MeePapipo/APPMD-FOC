@@ -25,6 +25,8 @@ export const accountTpbSettingsSchema = z
 export const focImportSettingsSchema = z
   .object({
     allowedProductLines: z.array(z.string().trim().min(1).max(100)).min(1).max(20),
+    /** Products whose quota is the Calculator formula; the others use the annual Quota(Year). */
+    formulaProducts: z.array(z.string().trim().min(1).max(100)).min(1).max(20),
   })
   .partial();
 

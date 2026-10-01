@@ -9,7 +9,7 @@ import type { Measure } from "@/lib/dashboard/focAccountMatrix";
 import { AccountDrawer } from "./AccountDrawer";
 import { AccountDrilldown } from "./AccountDrilldown";
 import {
-  ACCOUNT_COLUMNS,
+  columnsFor,
   ACCOUNT_NAME_COLUMN,
   FocOnlyCell,
   QuotaCell,
@@ -57,6 +57,8 @@ export function AccountsView({
   exportQuery,
   initialAcct,
   itemGroups,
+  product,
+  quotaMode,
 }: {
   rows: AccountRow[];
   year: number;
@@ -67,7 +69,11 @@ export function AccountsView({
   initialAcct: string | null;
   /** `ig` search param, "" = default Item Groups. */
   itemGroups: string;
+  /** `pl3` search param, "" = the default Product. */
+  product: string;
+  quotaMode: "formula" | "annual";
 }) {
+  const columns = useMemo(() => columnsFor(quotaMode === "annual"), [quotaMode]);
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
   const [filter, setFilter] = useState("");
   const [shown, setShown] = useState(PAGE);
@@ -75,11 +81,11 @@ export function AccountsView({
   const [detail, setDetail] = useState<string | null>(null);
 
   const sorted = useMemo(() => {
-    const col = sort.key === "accountName" ? ACCOUNT_NAME_COLUMN : ACCOUNT_COLUMNS.find((c) => c.key === sort.key);
+    const col = sort.key === "accountName" ? ACCOUNT_NAME_COLUMN : columns.find((c) => c.key === sort.key);
     const value = col?.sortValue ?? ((r: AccountRow) => r.totalCost);
     const dir = sort.desc ? -1 : 1;
     return [...rows].sort((a, b) => dir * compareValues(value(a), value(b)) || b.totalCost - a.totalCost || a.accountName.localeCompare(b.accountName));
-  }, [rows, sort]);
+  }, [rows, sort, columns]);
 
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -166,10 +172,10 @@ export function AccountsView({
                         <span>{money(r.totalCost)}</span>
                         <RatioBadge ratio={r.ratio} />
                       </div>
-                      {r.net && (
+                      {(r.net || r.annual) && (
                         <div className="mt-1.5 flex flex-wrap items-start gap-x-4 gap-y-1">
                           <QuotaCell row={r} align="left" />
-                          {r.net.focStandaloneCost > 0 && (
+                          {r.net && r.net.focStandaloneCost > 0 && (
                             <span className="text-[11px] text-muted">FOC only <FocOnlyCell row={r} /></span>
                           )}
                         </div>
@@ -186,7 +192,7 @@ export function AccountsView({
           <table className="hidden w-full text-sm md:table">
             <thead className="text-xs text-muted">
               <tr>
-                {[ACCOUNT_NAME_COLUMN, ...ACCOUNT_COLUMNS].map((c) => (
+                {[ACCOUNT_NAME_COLUMN, ...columns].map((c) => (
                   <th
                     key={c.key}
                     scope="col"
@@ -227,7 +233,7 @@ export function AccountsView({
                         <span className="block text-xs text-muted">{number ? `No. ${number}` : "—"}</span>
                       </button>
                     </td>
-                    {ACCOUNT_COLUMNS.map((c) => (
+                    {columns.map((c) => (
                       <td key={c.key} className={cn("px-3 py-2", c.align === "right" && "text-right")}>{c.cell(r, { year })}</td>
                     ))}
                   </tr>
@@ -259,6 +265,8 @@ export function AccountsView({
           year={year}
           measure={measure}
           itemGroups={itemGroups}
+          product={product}
+          quotaMode={quotaMode}
           suspended={detail !== null}
           onClose={close}
           onStep={step}

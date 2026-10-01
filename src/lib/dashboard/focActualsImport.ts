@@ -159,6 +159,10 @@ export type FocActualRow = {
   rep: string | null;
   /** Item Group (Tableau "Product Category Text"); null on rows stored before it was kept. */
   category: string | null;
+  /** Product (Tableau PL3: MOLECULAR LAB, CORE LAB...); null when the export has none. */
+  product: string | null;
+  /** The yearly quota Tableau holds for this account x item (Quota(Year)); null when none is set. */
+  annualQuota: number | null;
   accountName: string;
   materialNo: string;
   productName: string;
@@ -287,6 +291,9 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
       const bonusQty = toNum(r[periodIdx["Bonus Quantity"][k]]);
       const tests = toNum(r[periodIdx["NumberOfTests(Custom)"][k]]);
       const totalCost = toNum(r[periodIdx["Total Cost"][k]]);
+      // Quota(Year) is the ANNUAL figure repeated on every month that has activity (its
+      // "รวม" column is that repeat summed, which means nothing), so it is read as-is.
+      const annualQuota = toNum(r[periodIdx["Quota(Year)"][k]]);
       if (!(revenue || soldQty || focCost || focQty || bonusCost || bonusQty || tests || totalCost)) continue;
 
       // Aggregate rather than overwrite: the source crosstab normally has one
@@ -304,6 +311,7 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
         existing.bonusQty += Math.round(bonusQty);
         existing.totalCost += Math.round(totalCost);
         existing.tests += Math.round(tests);
+        if (annualQuota) existing.annualQuota = Math.max(existing.annualQuota ?? 0, annualQuota);
       } else {
         byKey.set(key, {
           year: resolvedYear,
@@ -311,6 +319,8 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
           team: tlevel3 || null,
           rep: tlevel6 || null,
           category,
+          product: (r[DIM.PL3] ?? "").trim() || null,
+          annualQuota: annualQuota || null,
           accountName: shipName,
           materialNo: product.code,
           productName: product.name,

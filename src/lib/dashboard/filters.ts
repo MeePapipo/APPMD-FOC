@@ -22,6 +22,8 @@ export type DashboardParams = {
   top?: string;
   /** Matrix measure: "cost", anything else = quantity. */
   m?: string;
+  /** Product (Tableau PL3) shown; absent = the first formula Product (Molecular Lab). */
+  pl3?: string;
   /** Item Groups to include, "|"-separated ("Controls|Consumables"); absent = the default groups. */
   ig?: string;
 };

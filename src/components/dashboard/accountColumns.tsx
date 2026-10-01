@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { NetSummary } from "@/lib/dashboard/entitlement";
-import { quotaSortValue, quotaSummary } from "@/lib/dashboard/accountQuota";
+import { annualQuotaLine, quotaSortValue, quotaSummary } from "@/lib/dashboard/accountQuota";
 import { RatioBadge } from "./RatioBadge";
 
 /**
@@ -21,7 +21,8 @@ export type AccountRow = {
   overCount: number; // items over quota beyond the alert thresholds (cumulative, information only)
   overCost: number; // their excess value
   net: NetSummary | null; // account-level verdict (Bonus given vs the whole entitlement), null = none
-  flagged: boolean; // net over quota, or stand-alone FOC past its threshold
+  flagged: boolean; // net over quota, or stand-alone FOC past its threshold (annual Products: an item over its yearly quota)
+  annual: { itemsWithQuota: number; itemsOver: number; excessUnits: number } | null; // annual-quota Products only
   monthlyCost: number[]; // FOC + Bonus cost, Jan..Dec of the selected year
 };
 
@@ -61,6 +62,17 @@ export function Sparkline({ values, year }: { values: number[]; year: number }) 
 
 /** Account-level Quota status: Over Quota / Within, the Bonus-vs-Quota line, the % and the item-level count (information). */
 export function QuotaCell({ row, align = "right" }: { row: AccountRow; align?: "left" | "right" }) {
+  if (row.annual) {
+    const line = annualQuotaLine(row.annual);
+    if (!line) return <span className="text-xs text-muted">—</span>;
+    const cls = align === "right" ? "items-end text-right" : "items-start text-left";
+    return (
+      <span className={cn("inline-flex flex-col gap-0.5", cls)} title={`Items given more than their yearly quota set in Tableau; ${row.annual.excessUnits.toLocaleString()} units above`}>
+        {row.annual.itemsOver > 0 ? <Badge tone="negative">Over Quota</Badge> : <span className="text-xs text-muted">Within</span>}
+        <span className="text-[11px] tabular-nums text-muted">{line}</span>
+      </span>
+    );
+  }
   const q = quotaSummary(row);
   if (!q) return <span className="text-xs text-muted">—</span>;
   const cls = align === "right" ? "items-end text-right" : "items-start text-left";
@@ -103,7 +115,7 @@ export const ACCOUNT_COLUMNS: AccountColumn[] = [
   { key: "revenue", label: "Revenue", align: "right", sortValue: (r) => r.revenue, cell: (r) => <span className="tabular-nums">{money(r.revenue)}</span> },
   { key: "totalCost", label: "FOC+Bonus cost", align: "right", sortValue: (r) => r.totalCost, cell: (r) => <span className="tabular-nums">{money(r.totalCost)}</span> },
   { key: "ratio", label: "Cost/revenue", align: "right", sortValue: (r) => r.ratio, cell: (r) => <RatioBadge ratio={r.ratio} /> },
-  { key: "quota", label: "Quota", align: "right", sortValue: quotaSortValue, hint: "Bonus given (at master prices) against the whole entitlement; Over Quota past the Settings thresholds. Item counts are information only.", cell: (r) => <QuotaCell row={r} /> },
+  { key: "quota", label: "Quota", align: "right", sortValue: quotaSortValue, hint: "Annual-quota Products: items given more than their yearly quota. Otherwise Bonus given (at master prices) against the whole entitlement; Over Quota past the Settings thresholds. Item counts are information only.", cell: (r) => <QuotaCell row={r} /> },
   { key: "focOnly", label: "FOC only", align: "right", sortValue: (r) => r.net?.focStandaloneCost ?? 0, hint: "Stand-alone FOC cost (THB): given with no reagent sold alongside it, carries VAT", cell: (r) => <FocOnlyCell row={r} /> },
   { key: "trend", label: "Monthly cost", hint: "FOC+Bonus cost, Jan to Dec of the selected year", cell: (r, { year }) => <Sparkline values={r.monthlyCost} year={year} /> },
 ];
@@ -119,3 +131,6 @@ export function compareValues(a: number | string, b: number | string): number {
   if (typeof a === "string" || typeof b === "string") return String(a).localeCompare(String(b));
   return a === b ? 0 : a < b ? -1 : 1;
 }
+
+/** The columns for a Product: stand-alone FOC relies on the formula's net figures, so annual-quota Products drop it. */
+export const columnsFor = (annual: boolean): AccountColumn[] => (annual ? ACCOUNT_COLUMNS.filter((c) => c.key !== "focOnly") : ACCOUNT_COLUMNS);

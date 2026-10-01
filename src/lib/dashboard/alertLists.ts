@@ -1,4 +1,5 @@
 import type { AccountAlert, AlertItem } from "./accountAlerts";
+import type { AnnualItem, AnnualSummary } from "./annualQuota";
 
 export type OverQuotaAccount = {
   accountName: string;
@@ -42,4 +43,36 @@ export function standaloneFocAccounts(rows: Scored[], alerts: Map<string, Accoun
     if (a?.net.focFlagged) out.push({ accountName: r.accountName, team: teamOf(r.accountName), cost: a.net.focStandaloneCost });
   }
   return out.sort((a, b) => b.cost - a.cost || a.accountName.localeCompare(b.accountName));
+}
+
+export type AnnualOverAccount = {
+  accountName: string;
+  team: string | null;
+  itemsWithQuota: number;
+  itemsOver: number;
+  excessUnits: number;
+  /** Up to three items furthest over their annual quota. */
+  topItems: AnnualItem[];
+};
+
+/** Annual-quota Products: accounts with items over their yearly quota, most excess units first. */
+export function annualOverAccounts(
+  rows: Scored[],
+  annual: Map<string, AnnualSummary & { items: AnnualItem[] }>,
+  teamOf: (name: string) => string | null,
+): AnnualOverAccount[] {
+  const out: AnnualOverAccount[] = [];
+  for (const r of rows) {
+    const a = annual.get(r.accountName);
+    if (!a || a.itemsOver === 0) continue;
+    out.push({
+      accountName: r.accountName,
+      team: teamOf(r.accountName),
+      itemsWithQuota: a.itemsWithQuota,
+      itemsOver: a.itemsOver,
+      excessUnits: a.excessUnits,
+      topItems: a.items.filter((i) => i.over).sort((x, y) => y.diff - x.diff).slice(0, 3),
+    });
+  }
+  return out.sort((a, b) => b.excessUnits - a.excessUnits || b.itemsOver - a.itemsOver || a.accountName.localeCompare(b.accountName));
 }

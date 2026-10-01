@@ -1,7 +1,13 @@
 import type { NetSummary } from "./entitlement";
 
 /** The bits of an Accounts-list row the Quota and FOC-only columns read. */
-export type QuotaRowLike = { net: NetSummary | null; flagged: boolean; overCount: number };
+export type QuotaRowLike = {
+  net: NetSummary | null;
+  flagged: boolean;
+  overCount: number;
+  /** Annual-quota Products: items with a quota, how many are over it, units above (null = formula Product). */
+  annual?: { itemsWithQuota: number; itemsOver: number; excessUnits: number } | null;
+};
 
 /** 1234567 -> "1.2M", 48200 -> "48.2K", 900 -> "900" (THB, for small print). */
 export function compactThb(n: number): string {
@@ -33,7 +39,35 @@ export function quotaSummary(r: QuotaRowLike): { over: boolean; line: string; pc
  * accounts first by net excess value, then the rest by excess, and accounts
  * without a verdict last. Ties fall back to total cost in the table's sort.
  */
-export function quotaSortValue(r: Pick<QuotaRowLike, "net" | "flagged">): number {
+export function quotaSortValue(r: Pick<QuotaRowLike, "net" | "flagged" | "annual">): number {
+  if (r.annual) return annualSortValue(r.annual);
   if (!r.net) return -1e15;
   return (r.flagged ? 1e12 : 0) + r.net.excessValue;
 }
+
+type AnnualCounts = { itemsWithQuota: number; itemsOver: number; excessUnits: number };
+
+/** Annual-quota Products: most items over quota first, then the units above. */
+export const annualSortValue = (a: AnnualCounts): number => a.itemsOver * 1e12 + a.excessUnits;
+
+/** "2 of 14 items over quota"; null when the account has no item with a quota. */
+export function annualQuotaLine(a: AnnualCounts): string | null {
+  return a.itemsWithQuota > 0 ? `${a.itemsOver} of ${a.itemsWithQuota} item${a.itemsWithQuota === 1 ? "" : "s"} over quota` : null;
+}
+
+/** The drawer's strip for an annual-quota Product, from the matrix API's `yearQuota` (items with a quota only). */
+export function annualYearSummary(yq: Record<string, { quota: number; free: number; significant: boolean }>): AnnualCounts {
+  let itemsWithQuota = 0, itemsOver = 0, excessUnits = 0;
+  for (const v of Object.values(yq)) {
+    if (v.quota <= 0) continue;
+    itemsWithQuota++;
+    if (v.significant) {
+      itemsOver++;
+      excessUnits += Math.max(0, v.free - v.quota);
+    }
+  }
+  return { itemsWithQuota, itemsOver, excessUnits };
+}
+
+/** Title-case a Tableau Product name: "MOLECULAR LAB" -> "Molecular Lab". */
+export const productLabel = (p: string): string => p.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());

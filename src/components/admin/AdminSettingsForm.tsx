@@ -13,7 +13,8 @@ type Values = {
   floorPct: number; // shown as a percentage, stored as a 0-1 ratio
   minRuns: number;
   windowMonths: number;
-  productLines: string; // comma-separated Product (Tableau PL3) names
+  productLines: string; // comma-separated Product (Tableau PL3) names to import
+  formulaProducts: string; // comma-separated Products whose quota is the formula
 };
 
 const INPUT = "w-28 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm tabular-nums focus:border-brand focus:outline-none";
@@ -47,7 +48,10 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
         body: JSON.stringify({
           alert: { overPct6800: Number(form.overPct6800), overPct5800: Number(form.overPct5800), minOverUnits: Number(form.minOverUnits), netOverPct: Number(form.netOverPct), netMinExcess: Number(form.netMinExcess), focStandaloneMin: Number(form.focStandaloneMin) },
           tpb: { accountFloorRatio: Number(form.floorPct) / 100, accountMinRuns: Number(form.minRuns), accountWindowMonths: Number(form.windowMonths) },
-          focImport: { allowedProductLines: form.productLines.split(",").map((x) => x.trim()).filter(Boolean) },
+          focImport: {
+            allowedProductLines: form.productLines.split(",").map((x) => x.trim()).filter(Boolean),
+            formulaProducts: form.formulaProducts.split(",").map((x) => x.trim()).filter(Boolean),
+          },
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -113,6 +117,9 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
         <label htmlFor="lines" className="mb-1 block text-sm font-medium text-ink">Products to import (comma-separated)</label>
         <input id="lines" type="text" required value={form.productLines} onChange={(e) => set("productLines")(e.target.value)} className="w-full max-w-md rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:border-brand focus:outline-none" />
         <p className="mt-1 max-w-md text-xs text-muted">Names as Tableau writes them, e.g. MOLECULAR LAB. Not case sensitive.</p>
+              <label htmlFor="formula" className="mb-1 mt-4 block text-sm font-medium text-ink">Products whose quota is the formula (comma-separated)</label>
+        <input id="formula" type="text" required value={form.formulaProducts} onChange={(e) => set("formulaProducts")(e.target.value)} className="w-full max-w-md rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:border-brand focus:outline-none" />
+        <p className="mt-1 max-w-md text-xs text-muted">These use the cumulative Calculator formula (Molecular Lab). Every other imported Product uses the yearly Quota(Year) from the Tableau file.</p>
       </section>
 
       <div className="flex items-center gap-3">

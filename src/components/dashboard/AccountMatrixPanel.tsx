@@ -15,9 +15,10 @@ import {
   type Split,
 } from "@/lib/dashboard/focAccountMatrix";
 import type { EntitlementLite } from "@/lib/dashboard/focExports";
+import { quotaBand } from "@/lib/dashboard/annualQuota";
 import type { NetSummary } from "@/lib/dashboard/entitlement";
 import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
-import { compactThb, formatOverPct } from "@/lib/dashboard/accountQuota";
+import { annualYearSummary, compactThb, formatOverPct } from "@/lib/dashboard/accountQuota";
 
 type YearQuotaRow = { quota: number; free: number; focQty: number; bonusQty: number; significant: boolean };
 
@@ -26,6 +27,7 @@ type Loaded = {
   entitlement: { rows: EntitlementLite[]; net?: NetSummary };
   /** Quota earned in the shown year and what was given in it, per item with a quota rule. */
   yearQuota: Record<string, YearQuotaRow>;
+  quotaMode?: "formula" | "annual";
 };
 
 const SPLITS: { value: Split; label: string }[] = [
@@ -53,15 +55,17 @@ function givenFor(y: YearQuotaRow, split: Split): number {
  * below (−) the quota in brackets (red = over, green = still to give), then
  * the status.
  */
-function VsQuota({ row, split }: { row: YearQuotaRow | undefined; split: Split }) {
-  if (!row) return <span className="text-xs text-muted">No quota rule</span>;
+const BAND_TEXT = { green: "text-positive", amber: "text-warning", red: "text-negative" } as const;
+
+function VsQuota({ row, split, annual }: { row: YearQuotaRow | undefined; split: Split; annual: boolean }) {
+  if (!row) return <span className="text-xs text-muted">{annual ? "No quota" : "No quota rule"}</span>;
   const given = givenFor(row, split);
   const diff = given - row.quota;
   const pct = row.quota > 0 ? (given / row.quota) * 100 : null;
   const status = row.significant ? "Over Quota" : row.free > row.quota ? "Over" : "Within";
   return (
     <span className="inline-flex flex-col items-end gap-0.5 whitespace-nowrap tabular-nums">
-      <span className="text-sm font-semibold text-ink">
+      <span className={cn("text-sm font-semibold", annual && pct !== null ? BAND_TEXT[quotaBand(pct)] : "text-ink")}>
         {pct === null ? "no quota" : `${Math.round(pct)}%`}{" "}
         <span className={cn("text-xs font-medium", diff > 0 ? "text-negative" : "text-positive")}>({signed(diff)})</span>
       </span>
@@ -72,7 +76,10 @@ function VsQuota({ row, split }: { row: YearQuotaRow | undefined; split: Split }
   );
 }
 
-const quotaHint = (year: number) => `Quota ${year}: what this account may be given for the year, worked out from the reagents it bought (in units).`;
+const quotaHint = (year: number, annual = false) =>
+  annual
+    ? `Quota ${year}: the yearly quota set in Tableau (Quota(Year)), in units. % = FOC + Bonus given in the year / quota.`
+    : `Quota ${year}: what this account may be given for the year, worked out from the reagents it bought (in units).`;
 
 /**
  * The expanded body of an Accounts-view row: product x Jan..Dec for one year.
@@ -86,6 +93,8 @@ export function AccountMatrixPanel({
   year,
   measure,
   itemGroups,
+  product,
+  quotaMode,
   onFullDetail,
 }: {
   name: string;
@@ -93,12 +102,15 @@ export function AccountMatrixPanel({
   measure: Measure;
   /** The page's `ig` param ("|"-separated), "" = default groups. */
   itemGroups: string;
+  /** The page's `pl3` param, "" = default Product. */
+  product: string;
+  quotaMode: "formula" | "annual";
   onFullDetail: () => void;
 }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [split, setSplit] = useState<Split>("both");
-  const igQuery = itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : "";
+  const igQuery = `${itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : ""}${product ? `&pl3=${encodeURIComponent(product)}` : ""}`;
 
   useEffect(() => {
     // The parent keys this panel by name+year, so a change remounts with
@@ -122,13 +134,18 @@ export function AccountMatrixPanel({
   const value = (c: MatrixCell) => cellValue(c, measure, split);
   const query = `name=${encodeURIComponent(name)}&year=${year}&measure=${measure}${igQuery}`;
   // Show the Item Group column once the selection reaches past the default groups.
-  const showGroup = itemGroups.split("|").some((g) => g && !(DEFAULT_ITEM_GROUPS as readonly string[]).includes(g));
-  const net = data.entitlement.net;
+  // ... or whenever the rows themselves span more than one group.
+  const showGroup =
+    itemGroups.split("|").some((g) => g && !(DEFAULT_ITEM_GROUPS as readonly string[]).includes(g)) ||
+    new Set(matrix.rows.map((r) => r.itemGroup).filter(Boolean)).size > 1;
+  const annual = (data.quotaMode ?? quotaMode) === "annual";
+  const net = annual ? undefined : data.entitlement.net;
   const unit = measure === "qty" ? "units" : "THB";
 
   return (
     <div className="px-1 pb-4 pt-3">
       {net && <NetStrip net={net} />}
+      {annual && <AnnualStrip yq={yq} />}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div role="group" aria-label="FOC or Bonus" className="inline-flex overflow-hidden rounded-lg border border-line-strong text-xs">
           {SPLITS.map((s) => (
@@ -168,10 +185,10 @@ export function AccountMatrixPanel({
                       <h4 className="text-sm font-medium text-ink">{r.productName}</h4>
                       <p className="text-xs text-muted">{r.materialNo}{showGroup && r.itemGroup ? ` · ${r.itemGroup}` : ""}</p>
                     </div>
-                    <VsQuota row={e} split={split} />
+                    <VsQuota row={e} split={split} annual={annual} />
                   </div>
                   <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                    <CardStat label={`Quota ${matrix.year}`} value={e ? e.quota.toLocaleString() : "—"} title={quotaHint(matrix.year)} strong />
+                    <CardStat label={`Quota ${matrix.year}`} value={e ? e.quota.toLocaleString() : "—"} title={quotaHint(matrix.year, annual)} strong />
                     <CardStat label="Prior year" value={fmt(value(r.prior)) || "0"} title={splitTitle(r.prior)} />
                     <CardStat label={`YTD ${matrix.year}`} value={fmt(value(r.ytd)) || "0"} title={splitTitle(r.ytd)} strong />
                   </dl>
@@ -196,7 +213,7 @@ export function AccountMatrixPanel({
                 <tr className="text-[11px] uppercase tracking-wide">
                   <th scope="col" className="sticky left-0 z-10 bg-brand-tint px-3 pt-2" />
                   {showGroup && <th scope="col" />}
-                  <th scope="col" className="px-2 pt-2 text-right font-medium text-ink" title={quotaHint(matrix.year)}>Quota {matrix.year}</th>
+                  <th scope="col" className="px-2 pt-2 text-right font-medium text-ink" title={quotaHint(matrix.year, annual)}>Quota {matrix.year}</th>
                   <th scope="col" className="px-2 pt-2 text-right font-medium">Last year</th>
                   <th scope="col" colSpan={12} className="border-l border-line px-2 pt-2 text-center font-medium">{matrix.year} by month</th>
                   <th scope="col" colSpan={2} className="border-l border-line px-3 pt-2 text-right font-medium text-ink">{matrix.year} YTD vs quota</th>
@@ -204,7 +221,7 @@ export function AccountMatrixPanel({
                 <tr className="border-b border-line">
                   <th scope="col" className="sticky left-0 z-10 min-w-56 bg-brand-tint px-3 py-2 text-left">Product</th>
                   {showGroup && <th scope="col" className="px-2 py-2 text-left">Item Group</th>}
-                  <th scope="col" className="bg-brand-tint/70 px-2 py-2 text-right text-sm font-semibold text-ink" title={quotaHint(matrix.year)}>Quota</th>
+                  <th scope="col" className="bg-brand-tint/70 px-2 py-2 text-right text-sm font-semibold text-ink" title={quotaHint(matrix.year, annual)}>Quota</th>
                   <th scope="col" className="px-2 py-2 text-right" title="Given last year (total)">Prior yr</th>
                   {MONTH_SHORT.map((m, i) => (
                     <th key={m} scope="col" className={cn("px-1.5 py-2 text-right font-normal", i === 0 && "border-l border-line")}>{m}</th>
@@ -230,7 +247,7 @@ export function AccountMatrixPanel({
                         <td key={i} className={cn("px-1.5 py-2 text-right text-xs tabular-nums text-muted", i === 0 && "border-l border-line")} title={value(c) !== 0 ? splitTitle(c) : undefined}>{fmt(value(c))}</td>
                       ))}
                       <td className="border-l border-line px-2 py-2 text-right text-sm font-semibold tabular-nums text-ink" title={splitTitle(r.ytd)}>{fmt(value(r.ytd))}</td>
-                      <td className="px-3 py-2 text-right"><VsQuota row={e} split={split} /></td>
+                      <td className="px-3 py-2 text-right"><VsQuota row={e} split={split} annual={annual} /></td>
                     </tr>
                   );
                 })}
@@ -292,6 +309,22 @@ function NetStrip({ net }: { net: NetSummary }) {
           {net.focFlagged && <Badge tone="warning">Flag</Badge>}
         </dd>
       </div>
+    </dl>
+  );
+}
+
+/** Annual-quota Products: how many items have a yearly quota, how many are over it and by how many units. */
+function AnnualStrip({ yq }: { yq: Record<string, YearQuotaRow> }) {
+  const s = annualYearSummary(yq);
+  const tile = "rounded-lg border border-line bg-canvas px-3 py-2";
+  return (
+    <dl className="mb-3 grid grid-cols-3 gap-2 text-xs" aria-label="Account quota summary">
+      <div className={tile}><dt className="text-muted">Items with a quota</dt><dd className="text-sm tabular-nums text-ink">{s.itemsWithQuota}</dd></div>
+      <div className={tile}>
+        <dt className="text-muted">Over Quota</dt>
+        <dd className="flex items-center gap-1.5 text-sm tabular-nums text-ink">{s.itemsOver}{s.itemsOver > 0 && <Badge tone="negative">Over Quota</Badge>}</dd>
+      </div>
+      <div className={tile}><dt className="text-muted">Excess units</dt><dd className="text-sm tabular-nums text-ink">{s.excessUnits.toLocaleString()}</dd></div>
     </dl>
   );
 }

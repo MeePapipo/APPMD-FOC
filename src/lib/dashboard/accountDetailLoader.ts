@@ -6,6 +6,8 @@ import { accountNumberFromName, buildGot, recentFromPeriod } from "./accountGive
 import { loadDataThrough } from "./dataThrough";
 import { loadAlertThresholds } from "./alertSettings";
 import { inItemGroups } from "./itemGroups";
+import { loadProductSettings, productOf } from "./importSettings";
+import { annualItems } from "./annualQuota";
 
 /** One reagent-consumable item for one calendar year: the quota earned in the year and what was given in it (units). */
 export type YearQuota = { quota: number; free: number; focQty: number; bonusQty: number; significant: boolean };
@@ -31,17 +33,24 @@ const dominant = (values: (string | null)[]): string | null => {
  * by the drilldown/matrix route and the per-account exports. Null when the
  * account has no rows. `itemGroups` (the `ig` selection, null = default groups)
  * filters the product rows; the entitlement always covers the default groups,
- * the formula's own.
+ * the formula's own. `product` (the Dashboard's Product filter, null = every Product)
+ * narrows the rows to one Product and picks the quota source: formula Products use
+ * the cumulative formula, the others the annual Quota(Year) from Tableau.
  */
-export async function loadAccountDetail(name: string, itemGroups: string[] | null = null) {
-  const allRows = await prisma.focActual.findMany({
+export async function loadAccountDetail(name: string, itemGroups: string[] | null = null, product: string | null = null) {
+  const fetched = await prisma.focActual.findMany({
     where: { accountName: name },
     select: {
-      year: true, month: true, team: true, rep: true, category: true, materialNo: true, productName: true,
+      year: true, month: true, team: true, rep: true, category: true, product: true, annualQuota: true, materialNo: true, productName: true,
       revenue: true, revenueQty: true, soldQty: true, focCost: true, focQty: true, bonusCost: true, bonusQty: true,
     },
   });
-  const rows = allRows.filter((r) => inItemGroups(r.category, itemGroups));
+  const allRows = product === null ? fetched : fetched.filter((r) => productOf(r.product) === product);
+  const productSettings = await loadProductSettings();
+  const annualMode = product !== null && !productSettings.formula.includes(product);
+  // Item Groups are a formula-Product notion (Molecular's controls/consumables); the annual-quota
+  // Products show every Item Group they have.
+  const rows = annualMode ? allRows : allRows.filter((r) => inItemGroups(r.category, itemGroups));
   if (allRows.length === 0) return null;
 
   // FocActual only carries the ship-to name, which ends in the account number
@@ -59,7 +68,11 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     loadDataThrough(),
   ]);
   const additionalMats = new Set(additionalItems.map((i) => i.materialNo));
-  const entitlement = computeEntitlement(buildGot(allRows.filter((r) => inItemGroups(r.category, null)), recentFromPeriod(through.latest)), assays, items, additionalMats, tpbInput, alert);
+  // Annual-quota Products have no formula: an empty entitlement keeps the response shape without
+  // scoring their items against rules that do not apply to them.
+  const entitlement = annualMode
+    ? computeEntitlement(new Map(), assays, items, additionalMats, tpbInput, alert)
+    : computeEntitlement(buildGot(allRows.filter((r) => inItemGroups(r.category, null)), recentFromPeriod(through.latest)), assays, items, additionalMats, tpbInput, alert);
 
   // Quota earned in a calendar year = the cumulative quota at that year's end minus the cumulative
   // quota at the end of the year before (no rounding jump at New Year; the years add up to the
@@ -76,6 +89,14 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
   }
   const alertPct = alertPctFor(entitlement.platform.platform, alert);
   const yearQuotaFor = (year: number): Record<string, YearQuota> => {
+    if (annualMode) {
+      // The quota is the yearly figure Tableau holds; given = FOC + Bonus in the year.
+      const out: Record<string, YearQuota> = {};
+      for (const i of annualItems(allRows.map((r) => ({ ...r, accountName: name })), year, alert.minOverUnits)) {
+        if (i.quota > 0) out[i.materialNo] = { quota: i.quota, free: i.given, focQty: i.focQty, bonusQty: i.bonusQty, significant: i.over };
+      }
+      return out;
+    }
     const before = [...yearsAsc].reverse().find((y) => y < year);
     const prev = before === undefined ? {} : cumulative.get(before)!;
     const now = cumulative.get(year) ?? {};
@@ -100,6 +121,7 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     /** Every year the account has rows in, whatever the Item Group filter. */
     years: [...new Set(allRows.map((r) => r.year))].sort((a, b) => b - a),
     entitlement,
+    quotaMode: (annualMode ? "annual" : "formula") as "annual" | "formula",
     yearQuotaFor,
     accountNumber: name.match(/\(([^()]+)\)\s*$/)?.[1] ?? null,
     ownTpbUsed: [...(tpbDetail?.values() ?? [])].some((d) => d.source !== "national"),

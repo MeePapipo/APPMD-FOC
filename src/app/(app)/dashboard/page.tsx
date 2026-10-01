@@ -11,20 +11,21 @@ import { OverQuotaToggle } from "@/components/dashboard/OverQuotaToggle";
 import { loadDashboardScope } from "@/lib/dashboard/scope";
 import { VIEWS, inPeriodScope, matrixYear, type DashboardParams, type DashboardView } from "@/lib/dashboard/filters";
 import { financeByMonth, withRatio } from "@/lib/dashboard/focFinance";
-import { loadAllowedProductLines } from "@/lib/dashboard/importSettings";
+import { LEGACY_PRODUCT, loadProductSettings } from "@/lib/dashboard/importSettings";
 import { loadDataThrough } from "@/lib/dashboard/dataThrough";
 import { periodLabel } from "@/lib/dashboard/period";
 import { FocActualsImportControl } from "@/components/dashboard/FocActualsImportControl";
 import { monthlyCostByAccount } from "@/lib/dashboard/accountSeries";
 import { AccountsView, type AccountRow } from "@/components/dashboard/AccountsView";
 import { AlertsView } from "@/components/dashboard/AlertsView";
-import { overQuotaAccounts, standaloneFocAccounts } from "@/lib/dashboard/alertLists";
+import { annualOverAccounts, overQuotaAccounts, standaloneFocAccounts } from "@/lib/dashboard/alertLists";
 import { DashboardViewTabs } from "@/components/dashboard/DashboardViewTabs";
 import { FocActualsAccountTable } from "@/components/dashboard/FocActualsAccountTable";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { BarChart } from "@/components/dashboard/BarChart";
 import { DonutChart } from "@/components/dashboard/DonutChart";
 import { RatioBadge } from "@/components/dashboard/RatioBadge";
+import { productLabel } from "@/lib/dashboard/accountQuota";
 import { Card } from "@/components/ui";
 
 const REVENUE_COLOR = "#0b41cd"; // matches --brand
@@ -60,7 +61,9 @@ export default async function DashboardPage({
 }
 
 async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; view: DashboardView; params: PageParams }) {
-  const [allowedProductLines, dataThrough] = await Promise.all([loadAllowedProductLines(), loadDataThrough()]);
+  const [productSettings, dataThrough] = await Promise.all([loadProductSettings(), loadDataThrough()]);
+  const allowedProductLines = productSettings.allowed;
+  const defaultProduct = productSettings.formula[0] ?? LEGACY_PRODUCT;
   // The account picker (an exact dropdown, not free text — see
   // ActualsFilters), the >20% toggle, the over-quota toggle and the "exclude
   // N/A" toggle narrow the whole view (KPIs, panels, lists), not just one
@@ -70,14 +73,19 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
   // excluding them is a separate toggle from ">20% only" (which, correctly,
   // still counts an N/A account as a breach: an unbillable give-away is worse
   // than 20%, not undefined for that purpose).
-  const { allActuals, years, accountNames, accountRows, facts, alerts, itemGroupChoices } = await loadDashboardScope(params);
+  const { allActuals, years, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, product, productChoices, quotaMode } = await loadDashboardScope(params);
 
   if (allActuals.length === 0) {
     return (
       <div>
         {isAdmin && <FocActualsImportControl allowedProductLines={allowedProductLines} dataThrough={dataThrough} />}
+        {/* A Product with nothing imported yet still needs its picker, or there is no way back. */}
+        {params.pl3 && (
+          <ActualsFilters view="overview" years={[]} accountNames={[]} accountCount={0} itemGroupChoices={[]} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
+        )}
         <p className="py-12 text-center text-sm text-muted">
-          No national actuals imported yet{isAdmin ? " — upload a file above to get started." : "."}
+          {params.pl3 ? `No actuals imported for ${productLabel(product)} yet` : "No national actuals imported yet"}
+          {isAdmin ? " — upload a file above to get started." : "."}
         </p>
       </div>
     );
@@ -93,11 +101,11 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
       </p>
 
       <DashboardViewTabs current={view} params={{ ...params }} />
-      <ActualsFilters view={view} years={years} accountNames={accountNames} accountCount={accountRows.length} itemGroupChoices={itemGroupChoices} />
+      <ActualsFilters view={view} years={years} accountNames={accountNames} accountCount={accountRows.length} itemGroupChoices={itemGroupChoices} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
 
-      {view === "accounts" && <AccountsContent params={params} years={years} accountRows={accountRows} allActuals={allActuals} />}
+      {view === "accounts" && <AccountsContent params={params} years={years} accountRows={accountRows} allActuals={allActuals} quotaMode={quotaMode} />}
       {view === "overview" && <OverviewContent accountRows={accountRows} facts={facts} />}
-      {view === "alerts" && <AlertsContent accountRows={accountRows} facts={facts} alerts={alerts} />}
+      {view === "alerts" && <AlertsContent accountRows={accountRows} facts={facts} alerts={alerts} annualAlerts={annualAlerts} quotaMode={quotaMode} />}
     </div>
   );
 }
@@ -107,7 +115,7 @@ type PageParams = DashboardParams & { acct?: string };
 
 type Scope = Awaited<ReturnType<typeof loadDashboardScope>>;
 
-function AccountsContent({ params, years, accountRows, allActuals }: { params: PageParams; years: number[]; accountRows: Scope["accountRows"]; allActuals: Scope["allActuals"] }) {
+function AccountsContent({ params, years, accountRows, allActuals, quotaMode }: { quotaMode: "formula" | "annual"; params: PageParams; years: number[]; accountRows: Scope["accountRows"]; allActuals: Scope["allActuals"] }) {
   const year = matrixYear(params, years);
   // The sparkline shows the whole selected year (team filter applies, the
   // month range does not), so a month filter never flattens the trend.
@@ -119,7 +127,7 @@ function AccountsContent({ params, years, accountRows, allActuals }: { params: P
   );
   const rows: AccountRow[] = accountRows.map((a) => ({ ...a, monthlyCost: series[a.accountName] ?? Array<number>(12).fill(0) }));
   const exportParams = new URLSearchParams();
-  for (const key of ["year", "month", "mto", "ateam", "q", "hi", "xna", "sig", "top", "ig"] as const) {
+  for (const key of ["year", "month", "mto", "ateam", "q", "hi", "xna", "sig", "top", "ig", "pl3"] as const) {
     if (params[key]) exportParams.set(key, params[key]);
   }
   return (
@@ -130,11 +138,13 @@ function AccountsContent({ params, years, accountRows, allActuals }: { params: P
       exportQuery={exportParams.toString()}
       initialAcct={params.acct ?? null}
       itemGroups={params.ig ?? ""}
+      product={params.pl3 ?? ""}
+      quotaMode={quotaMode}
     />
   );
 }
 
-function AlertsContent({ accountRows, facts, alerts }: { accountRows: Scope["accountRows"]; facts: Scope["facts"]; alerts: Scope["alerts"] }) {
+function AlertsContent({ accountRows, facts, alerts, annualAlerts, quotaMode }: { accountRows: Scope["accountRows"]; facts: Scope["facts"]; alerts: Scope["alerts"]; annualAlerts: Scope["annualAlerts"]; quotaMode: "formula" | "annual" }) {
   // Team per account: whichever appears on the most rows in scope.
   const dominant = (name: string, pick: "team" | "rep"): string | null => {
     const counts = new Map<string, number>();
@@ -142,10 +152,12 @@ function AlertsContent({ accountRows, facts, alerts }: { accountRows: Scope["acc
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   };
   const teamOf = (name: string) => dominant(name, "team");
-  const overQuota = overQuotaAccounts(accountRows, alerts, teamOf);
-  const standalone = standaloneFocAccounts(accountRows, alerts, teamOf);
+  const annual = quotaMode === "annual";
+  const overQuota = annual ? [] : overQuotaAccounts(accountRows, alerts, teamOf);
+  const standalone = annual ? [] : standaloneFocAccounts(accountRows, alerts, teamOf);
+  const annualOver = annual ? annualOverAccounts(accountRows, annualAlerts, teamOf) : [];
   const byTeam = focTeamBreakdown(facts).map((t) => ({ key: t.team, ...withRatio(t) }));
-  return <AlertsView overQuota={overQuota} standalone={standalone} byMonth={financeByMonth(facts)} byTeam={byTeam} />;
+  return <AlertsView mode={quotaMode} annualOver={annualOver} overQuota={overQuota} standalone={standalone} byMonth={financeByMonth(facts)} byTeam={byTeam} />;
 }
 
 function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRows"]; facts: Scope["facts"] }) {
