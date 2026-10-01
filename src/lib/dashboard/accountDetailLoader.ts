@@ -52,8 +52,13 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
   const additionalMats = new Set(additionalItems.map((i) => i.materialNo));
   const entitlement = computeEntitlement(buildGot(allRows.filter((r) => inItemGroups(r.category, null)), recentFromPeriod(through.latest)), assays, items, additionalMats, tpbInput, alert);
 
+  // Pack size per reagent material (6800 and 5800 share material numbers and sizes), for boxes -> tests.
+  const packByMaterial: Record<string, number> = {};
+  for (const a of assays) if (a.packSize > 0) packByMaterial[a.materialNo] = a.packSize;
+
   return {
     rows,
+    packByMaterial,
     /** Every year the account has rows in, whatever the Item Group filter. */
     years: [...new Set(allRows.map((r) => r.year))].sort((a, b) => b - a),
     entitlement,

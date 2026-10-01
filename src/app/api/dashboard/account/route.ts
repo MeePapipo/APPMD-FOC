@@ -3,6 +3,7 @@ import { accountMonthlyTrend, accountProductsGiven, accountProductsSold, account
 import { buildAccountMatrix } from "@/lib/dashboard/focAccountMatrix";
 import { loadAccountDetail } from "@/lib/dashboard/accountDetailLoader";
 import { parseItemGroups } from "@/lib/dashboard/filters";
+import { withVolume } from "@/lib/dashboard/soldVolume";
 
 /**
  * Per-account drill-down for the Dashboard. The original fields are scoped to
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
     summary: accountSummary(rows),
     monthly: accountMonthlyTrend(rows),
     productsGiven: accountProductsGiven(rows, 10),
-    productsSold: accountProductsSold(rows, 10),
+    productsSold: withVolume(accountProductsSold(rows, 10), detail.packByMaterial),
     entitlement,
     years,
     matrix: buildAccountMatrix(rows, year),

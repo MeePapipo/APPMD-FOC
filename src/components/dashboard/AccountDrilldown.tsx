@@ -20,7 +20,7 @@ type AccountDetail = {
   summary: { revenue: number; focCost: number; bonusCost: number; totalCost: number; ratio: number };
   monthly: { key: string; label: string; revenue: number; focCost: number; bonusCost: number; focValue: number; ratio: number }[];
   productsGiven: { materialNo: string; productName: string; focQty: number; bonusQty: number; focCost: number; bonusCost: number; focValue: number }[];
-  productsSold: { materialNo: string; productName: string; revenueQty: number; revenue: number }[];
+  productsSold: { materialNo: string; productName: string; revenueQty: number; revenue: number; boxes: number; testsPerBox: number | null; tests: number | null }[];
   entitlement: {
     platform: { platform: string; basis: string; has4800: boolean };
     assayTests: { code: string; tests: number; batches: number }[];
@@ -158,15 +158,20 @@ export function AccountDrilldown({ accountName, onClose }: { accountName: string
               <EntitlementTable entitlement={detail.entitlement} />
 
               <div>
-                <h3 className="mb-3 text-sm font-semibold text-ink">Products sold to this account</h3>
+                <h3 className="mb-1 text-sm font-semibold text-ink">Reagents sold to this account</h3>
+                <p className="mb-3 text-xs text-muted">Boxes sold over the whole history, with the tests they hold (pack size from Master data, or the test count in the product name).</p>
                 {detail.productsSold.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted">No revenue-category sales.</p>
                 ) : (
                   <BarChart
-                    data={detail.productsSold.map((p) => ({ category: p.productName, values: { value: p.revenue } }))}
-                    series={[{ key: "value", label: "Revenue (THB)", color: REVENUE_COLOR }]}
+                    data={detail.productsSold.map((p) => ({ category: p.productName, values: { value: p.boxes } }))}
+                    series={[{ key: "value", label: "Boxes sold", color: REVENUE_COLOR }]}
                     orientation="horizontal"
-                    valueFormat={(n) => n.toLocaleString()}
+                    valueFormat={(n) => `${n.toLocaleString()} ${Math.abs(n) === 1 ? "box" : "boxes"}`}
+                    rightOf={(d) => {
+                      const p = detail.productsSold.find((x) => x.productName === d.category);
+                      return p && p.tests !== null ? <span className="text-xs text-muted tabular-nums">{p.tests.toLocaleString()} tests</span> : null;
+                    }}
                   />
                 )}
               </div>
