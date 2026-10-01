@@ -1,16 +1,17 @@
 import { prisma } from "@/lib/prisma";
+import { timed } from "@/lib/perf";
 import { toAccountDTO, toAdditionalFocDTO, toAssayDTO } from "@/lib/dto";
 import { Calculator } from "@/components/calculator/Calculator";
 
 export default async function CalculatorPage() {
-  const [accounts, assays, additionalFoc] = await Promise.all([
+  const [accounts, assays, additionalFoc] = await timed("calculator: master data", () => Promise.all([
     prisma.account.findMany({ where: { active: true }, orderBy: { accountName: "asc" } }),
     prisma.masterAssay.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
     prisma.additionalFocItem.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { description: "asc" }],
     }),
-  ]);
+  ]));
 
   return (
     <div className="mx-auto min-w-0 max-w-5xl">

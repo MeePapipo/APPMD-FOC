@@ -6,6 +6,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrisma() {
+  if (process.env.PERF_LOG !== "0") console.log("[perf] new Prisma client (cold instance)");
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   return new PrismaClient({ adapter });
 }

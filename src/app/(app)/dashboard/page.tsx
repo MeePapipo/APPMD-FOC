@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/session";
+import { timed } from "@/lib/perf";
 import {
   focCostComposition,
   focMonthlyTrend,
@@ -74,7 +75,7 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
   // excluding them is a separate toggle from ">20% only" (which, correctly,
   // still counts an N/A account as a breach: an unbillable give-away is worse
   // than 20%, not undefined for that purpose).
-  const { allActuals, years, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, product, productChoices, quotaMode, year: scopeYear, compare, priorFacts } = await loadDashboardScope(params);
+  const { allActuals, years, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, product, productChoices, quotaMode, year: scopeYear, compare, priorFacts } = await timed("dashboard: whole scope", () => loadDashboardScope(params));
 
   if (allActuals.length === 0) {
     return (

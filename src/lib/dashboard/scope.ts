@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { timed } from "@/lib/perf";
 import { focAccountRows, type FocActualFact } from "./focActualsAggregate";
 import { computeAccountAlerts, type AccountAlert } from "./accountAlerts";
 import { yoyWindow } from "./yoy";
@@ -50,10 +51,12 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
   const product = p.pl3 || settings.formula[0] || LEGACY_PRODUCT;
   const quotaMode: "formula" | "annual" = settings.formula.includes(product) ? "formula" : "annual";
   const productWhere = product === LEGACY_PRODUCT ? { OR: [{ product }, { product: null }] } : { product };
-  const [allActuals, productGroups] = await Promise.all([
-    prisma.focActual.findMany({ where: productWhere, select: SCOPE_SELECT }) as Promise<ScopeFact[]>,
-    prisma.focActual.groupBy({ by: ["product"] }),
-  ]);
+  const [allActuals, productGroups] = await timed("dashboard: load actuals", () =>
+    Promise.all([
+      prisma.focActual.findMany({ where: productWhere, select: SCOPE_SELECT }) as Promise<ScopeFact[]>,
+      prisma.focActual.groupBy({ by: ["product"] }),
+    ]),
+  );
   const productChoices = [...new Set(productGroups.map((g) => g.product ?? LEGACY_PRODUCT))].sort();
   const years = [...new Set(allActuals.map((f) => f.year))].sort((a, b) => b - a);
   const year = resolveYear(p, years);
@@ -74,7 +77,7 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
   // Formula Products: the net rule over the formula's own Item Groups, whatever the filter says, within the
   // selected year (all loaded months when the Year filter is All years).
   const alerts: Map<string, AccountAlert> =
-    needAlerts && quotaMode === "formula" ? await computeAccountAlerts(allActuals.filter((f) => inItemGroups(f.category, null) && (!year || f.year === Number(year)))) : new Map();
+    needAlerts && quotaMode === "formula" ? await timed("dashboard: account alerts", () => computeAccountAlerts(allActuals.filter((f) => inItemGroups(f.category, null) && (!year || f.year === Number(year))))) : new Map();
   // Annual-quota Products: items over the yearly quota in the shown year.
   const annualAlerts =
     needAlerts && quotaMode === "annual"

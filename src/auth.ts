@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import type { Provider } from "next-auth/providers";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { timed } from "@/lib/perf";
 
 const allowedDomains = (process.env.ALLOWED_EMAIL_DOMAINS ?? "")
   .split(",")
@@ -65,9 +66,9 @@ providers.push(
       const email = String(creds?.email ?? "").trim().toLowerCase();
       const password = String(creds?.password ?? "");
       if (!email || !password) return null;
-      const user = await prisma.user.findUnique({ where: { email } });
+      const user = await timed("login: find user", () => prisma.user.findUnique({ where: { email } }));
       if (!user || !user.active || !user.passwordHash) return null;
-      const valid = await bcrypt.compare(password, user.passwordHash);
+      const valid = await timed("login: bcrypt compare", () => bcrypt.compare(password, user.passwordHash!));
       if (!valid) return null;
       return { id: user.id, email: user.email, name: user.name };
     },
@@ -105,7 +106,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user?.email) {
         const email = user.email.toLowerCase();
         const isSeedAdmin = adminEmails.includes(email);
-        const dbUser = await prisma.user.upsert({
+        const dbUser = await timed("login: upsert user", () => prisma.user.upsert({
           where: { email },
           create: {
             email,
@@ -119,7 +120,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             lastLoginAt: new Date(),
             loginCount: { increment: 1 },
           },
-        });
+        }));
         token.role = dbUser.role;
         token.uid = dbUser.id;
         token.email = email;

@@ -2,10 +2,11 @@ import { redirect } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { timed } from "@/lib/perf";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
-  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { mustChangePassword: true, passwordHash: true } });
+  const user = await timed("layout: session", () => requireUser());
+  const account = await timed("layout: user row", () => prisma.user.findUnique({ where: { id: user.id }, select: { mustChangePassword: true, passwordHash: true } }));
   // An admin-issued temporary password must be replaced before anything else is usable.
   if (account?.mustChangePassword) redirect("/change-password");
   return (
