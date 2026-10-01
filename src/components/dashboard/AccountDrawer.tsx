@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { Measure } from "@/lib/dashboard/focAccountMatrix";
 import { AccountMatrixPanel } from "./AccountMatrixPanel";
-import { QuotaCell, money, splitName, type AccountRow } from "./accountColumns";
+import { QuotaCell, costDelta, money, ratioDelta, revenueDelta, splitName, type AccountRow } from "./accountColumns";
 import { RatioBadge } from "./RatioBadge";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -24,6 +24,7 @@ export function AccountDrawer({
   itemGroups,
   product,
   quotaMode,
+  allYears,
   suspended,
   onClose,
   onStep,
@@ -39,6 +40,7 @@ export function AccountDrawer({
   /** The `pl3` URL param, "" = default Product. */
   product: string;
   quotaMode: "formula" | "annual";
+  allYears: boolean;
   suspended: boolean;
   onClose: () => void;
   onStep: (delta: -1 | 1) => void;
@@ -110,15 +112,15 @@ export function AccountDrawer({
             </div>
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
-            <div><dt className="text-muted">Revenue</dt><dd className="tabular-nums text-ink">{money(row.revenue)}</dd></div>
-            <div><dt className="text-muted">FOC+Bonus cost</dt><dd className="tabular-nums text-ink">{money(row.totalCost)}</dd></div>
-            <div><dt className="text-muted">Cost/revenue</dt><dd><RatioBadge ratio={row.ratio} /></dd></div>
+            <div><dt className="text-muted">Revenue</dt><dd className="tabular-nums text-ink">{money(row.revenue)}</dd><dd>{revenueDelta(row, false)}</dd></div>
+            <div><dt className="text-muted">FOC+Bonus cost</dt><dd className="tabular-nums text-ink">{money(row.totalCost)}</dd><dd>{costDelta(row, false)}</dd></div>
+            <div><dt className="text-muted">Cost/revenue</dt><dd><RatioBadge ratio={row.ratio} /></dd><dd>{ratioDelta(row, false)}</dd></div>
             <div><dt className="text-muted">Quota</dt><dd><QuotaCell row={row} align="left" /></dd></div>
           </dl>
           <p className="mt-2 hidden text-[11px] text-muted md:block">Esc closes · ↑ ↓ or J K for the previous / next account</p>
         </div>
         <div className="px-3 md:px-5">
-          <AccountMatrixPanel key={`${row.accountName}|${year}|${itemGroups}|${product}`} name={row.accountName} year={year} measure={measure} itemGroups={itemGroups} product={product} quotaMode={quotaMode} onFullDetail={onFullDetail} />
+          <AccountMatrixPanel key={`${row.accountName}|${year}|${itemGroups}|${product}|${allYears}`} allYears={allYears} name={row.accountName} year={year} measure={measure} itemGroups={itemGroups} product={product} quotaMode={quotaMode} onFullDetail={onFullDetail} />
         </div>
       </aside>
     </div>

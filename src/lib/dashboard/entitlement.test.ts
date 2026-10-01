@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alertPctFor, computeEntitlement, detectPlatform, isSignificantOver, netVerdict, DEFAULT_ALERT, type MaterialGiven } from "./entitlement";
+import { alertPctFor, computeEntitlement, detectPlatform, isSignificantOver, overSeverity, netVerdict, DEFAULT_ALERT, type MaterialGiven } from "./entitlement";
 import type { AssayLite, ItemLite } from "@/lib/calc/types";
 import type { TpbTableInput } from "@/lib/calc/tpb";
 
@@ -267,5 +267,27 @@ describe("netVerdict (account-level Over Quota)", () => {
   it("flags stand-alone FOC on its own threshold, independent of the formula", () => {
     expect(netVerdict(100, 50, 9999, A).focFlagged).toBe(false);
     expect(netVerdict(100, 50, 10000, A).focFlagged).toBe(true);
+  });
+});
+
+describe("overSeverity: +1 extra Bonus accepted per reagent bill", () => {
+  // pct 1000 so only the per-bill rule can decide; minOverUnits 1.
+  it("is null when not over", () => {
+    expect(overSeverity(0, 10, 3, 1000, 1)).toBeNull();
+    expect(overSeverity(-4, 10, 3, 1000, 1)).toBeNull();
+  });
+  it("is a warning from +1 up to the number of bills", () => {
+    expect(overSeverity(1, 321, 3, 1000, 1)).toBe("warning");
+    expect(overSeverity(3, 321, 3, 1000, 1)).toBe("warning");
+  });
+  it("is critical beyond the number of bills", () => {
+    expect(overSeverity(4, 321, 3, 1000, 1)).toBe("critical");
+  });
+  it("lets the percentage rule raise a small overshoot to critical", () => {
+    expect(overSeverity(2, 4, 10, 15, 1)).toBe("critical");
+  });
+  it("without a bill count falls back to the percentage rule", () => {
+    expect(overSeverity(36, 321, null, 15, 1)).toBe("warning");
+    expect(overSeverity(60, 321, null, 15, 1)).toBe("critical");
   });
 });

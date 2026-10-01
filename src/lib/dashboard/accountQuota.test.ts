@@ -21,8 +21,8 @@ describe("account quota helpers", () => {
   it("summarises only accounts with a verdict", () => {
     expect(quotaSummary({ net: null, flagged: false, overCount: 0 })).toBeNull();
     const s = quotaSummary({ net: net(), flagged: true, overCount: 3 })!;
-    expect(s).toEqual({ over: true, line: "Bonus 1.2M / Entitled 800K", pct: "+54.3%", items: "3 items Over Quota" });
-    expect(quotaSummary({ net: net({ over: false }), flagged: false, overCount: 1 })!.items).toBe("1 item Over Quota");
+    expect(s).toEqual({ over: true, line: "Actual Bonus 1.2M vs Quota Bonus 800K", pct: "+54.3%", items: "Items over quota: 3 red" });
+    expect(quotaSummary({ net: net({ over: false }), flagged: false, overCount: 1, warnCount: 4 })!.items).toBe("Items over quota: 1 red · 4 yellow");
   });
   it("orders flagged first, then excess, then no verdict", () => {
     const flagged = quotaSortValue({ net: net({ excessValue: 10 }), flagged: true });

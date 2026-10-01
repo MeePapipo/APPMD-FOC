@@ -61,6 +61,16 @@ export function inPeriodScope(f: { year: number; month: number; team: string | n
   );
 }
 
+/** The Year filter's value for "every year". An absent param means the latest year, so All years needs its own value. */
+export const ALL_YEARS = "all";
+
+/** The year the views are scoped to: the picked year, "" for all years, else the latest year in the data. */
+export function resolveYear(p: Pick<DashboardParams, "year">, years: number[]): string {
+  if (p.year === ALL_YEARS) return "";
+  if (p.year && Number.isInteger(Number(p.year))) return p.year;
+  return years[0] ? String(years[0]) : "";
+}
+
 /** The year the matrix shows: the picked year, else the latest year in the data. */
 export function matrixYear(p: Pick<DashboardParams, "year">, years: number[]): number {
   const picked = Number(p.year);

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
@@ -13,11 +14,14 @@ export function StatTile({
   value,
   hint,
   accent,
+  delta,
 }: {
   label: string;
   value: string;
   hint?: string;
   accent?: string;
+  /** A DeltaChip (change against last year), shown right under the value. */
+  delta?: ReactNode;
 }) {
   return (
     <Card
@@ -27,6 +31,7 @@ export function StatTile({
     >
       <div className="text-xs text-muted">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+      {delta && <div className="mt-0.5">{delta}</div>}
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </Card>
   );

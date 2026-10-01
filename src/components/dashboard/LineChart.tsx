@@ -6,10 +6,10 @@
  * No chart library, matching `BarChart`'s convention.
  */
 
-const REVENUE_COLOR = "#0b41cd";
+const REVENUE_COLOR = "var(--chart-revenue)";
 const WIDTH = 640;
 const HEIGHT = 160;
-const PAD = { top: 16, right: 12, bottom: 24, left: 36 };
+const PAD = { top: 20, right: 76, bottom: 24, left: 36 };
 
 export function LineChart({
   data,
@@ -27,7 +27,8 @@ export function LineChart({
   }
 
   const finiteValues = data.map((d) => d.value).filter((v): v is number => v !== null && Number.isFinite(v));
-  const max = Math.max(1, referenceValue ?? 0, ...finiteValues) * 1.15;
+  // A round axis top (multiple of 20) so the four gridlines land on whole, even steps.
+  const max = Math.ceil((Math.max(1, referenceValue ?? 0, ...finiteValues) * 1.1) / 20) * 20;
 
   const plotW = WIDTH - PAD.left - PAD.right;
   const plotH = HEIGHT - PAD.top - PAD.bottom;
@@ -67,7 +68,7 @@ export function LineChart({
               strokeDasharray="4 3"
             />
             {referenceLabel && (
-              <text x={WIDTH - PAD.right} y={y(referenceValue) - 4} textAnchor="end" className="fill-muted text-[9px]">
+              <text x={WIDTH - PAD.right + 6} y={y(referenceValue)} dominantBaseline="middle" className="fill-muted text-[9px]">
                 {referenceLabel}
               </text>
             )}
@@ -82,7 +83,16 @@ export function LineChart({
           return (
             <g key={p.label}>
               <circle cx={p.x} cy={py} r={4} fill={REVENUE_COLOR} stroke="var(--surface)" strokeWidth={2} />
-              <text x={p.x} y={py - 8} textAnchor="middle" className="fill-ink text-[9px] tabular-nums">
+              <text
+                x={p.x}
+                y={py - 8}
+                textAnchor="middle"
+                className="fill-ink text-[9px] tabular-nums"
+                stroke="var(--surface)"
+                strokeWidth={3}
+                strokeLinejoin="round"
+                paintOrder="stroke"
+              >
                 {valueFormat(p.value)}
               </text>
             </g>

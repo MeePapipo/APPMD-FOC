@@ -32,6 +32,7 @@ export function BarChart({
   valueFormat = (n: number) => Math.round(n).toLocaleString(),
   height = 240,
   rightOf,
+  labelFormat,
 }: {
   data: ChartDatum[];
   series: ChartSeries[];
@@ -41,11 +42,15 @@ export function BarChart({
   /** Horizontal orientation only — extra content after a row's bars, e.g. a
    * ratio status badge. */
   rightOf?: (d: ChartDatum) => ReactNode;
+  /** Vertical orientation only — a shorter format for the axis and the labels above the bars
+   * (the full `valueFormat` stays in the tooltip and the accessible name). */
+  labelFormat?: (n: number) => string;
 }) {
   if (data.length === 0) {
     return <p className="py-8 text-center text-sm text-muted">No data for this filter.</p>;
   }
 
+  const label = labelFormat ?? valueFormat;
   const max = niceMax(Math.max(1, ...data.flatMap((d) => series.map((s) => d.values[s.key] ?? 0))));
 
   return (
@@ -62,39 +67,44 @@ export function BarChart({
       )}
 
       {orientation === "vertical" ? (
-        <div className="relative" style={{ height }}>
-          {GRID_FRACTIONS.map((f) => (
-            <div key={f} className="absolute inset-x-0 border-t border-line" style={{ bottom: `${f * 100}%` }}>
-              <span className="absolute left-0 -translate-y-full pb-0.5 text-[10px] text-muted">
-                {valueFormat(max * f)}
-              </span>
-            </div>
-          ))}
-          <div className="absolute inset-0 flex items-end justify-around gap-1 pl-10">
-            {data.map((d) => (
-              <div key={d.category} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
-                <div className="flex h-full items-end gap-0.5">
-                  {series.map((s) => {
-                    const v = d.values[s.key] ?? 0;
-                    const pct = (v / max) * 100;
-                    return (
-                      <div key={s.key} className="flex h-full w-[18px] flex-col items-center justify-end">
-                        <span className="mb-0.5 text-[9px] tabular-nums text-muted">
-                          {v > 0 ? valueFormat(v) : ""}
-                        </span>
-                        <div
-                          tabIndex={0}
-                          role="img"
-                          aria-label={`${d.category} — ${s.label}: ${valueFormat(v)}`}
-                          className="w-full rounded-t-[4px] transition-[filter] hover:brightness-110 focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-brand"
-                          style={{ height: `${pct}%`, minHeight: v > 0 ? 3 : 0, backgroundColor: s.color }}
-                        />
-                      </div>
-                    );
-                  })}
+        <div className="relative" style={{ height: height + 22 }}>
+          {/* Plot area: gridlines and bars; the axis labels sit in the left gutter and the
+              category labels in the strip underneath, so neither can run into a bar. */}
+          <div className="absolute inset-x-0 top-3 pl-12" style={{ bottom: 22 }}>
+            <div className="relative h-full">
+              {GRID_FRACTIONS.map((f) => (
+                <div key={f} className="absolute inset-x-0 border-t border-line" style={{ bottom: `${f * 100}%` }}>
+                  <span className="absolute -left-12 w-10 -translate-y-1/2 text-right text-[10px] tabular-nums text-muted">{label(max * f)}</span>
                 </div>
-                <span className="max-w-full truncate text-[11px] text-muted">{d.category}</span>
+              ))}
+              <div className="absolute inset-0 flex items-end justify-around gap-1">
+                {data.map((d) => (
+                  <div key={d.category} className="flex h-full min-w-0 flex-1 items-end justify-center gap-0.5">
+                    {series.map((s) => {
+                      const v = d.values[s.key] ?? 0;
+                      const pct = (v / max) * 100;
+                      return (
+                        <div key={s.key} className="relative flex h-full w-full max-w-[26px] flex-col items-center justify-end">
+                          <span className="mb-0.5 whitespace-nowrap text-[9px] tabular-nums text-muted">{v > 0 ? label(v) : ""}</span>
+                          <div
+                            tabIndex={0}
+                            role="img"
+                            title={`${d.category} — ${s.label}: ${valueFormat(v)}`}
+                            aria-label={`${d.category} — ${s.label}: ${valueFormat(v)}`}
+                            className="w-full rounded-t-[4px] transition-[filter] hover:brightness-110 focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-brand"
+                            style={{ height: `${pct}%`, minHeight: v > 0 ? 3 : 0, backgroundColor: s.color }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
+            </div>
+          </div>
+          <div className="absolute inset-x-0 bottom-0 flex h-[18px] justify-around gap-1 pl-12">
+            {data.map((d) => (
+              <span key={d.category} className="min-w-0 flex-1 truncate text-center text-[11px] text-muted" title={d.category}>{d.category}</span>
             ))}
           </div>
         </div>

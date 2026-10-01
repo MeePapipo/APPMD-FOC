@@ -20,7 +20,7 @@ import type { NetSummary } from "@/lib/dashboard/entitlement";
 import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
 import { annualYearSummary, compactThb, formatOverPct } from "@/lib/dashboard/accountQuota";
 
-type YearQuotaRow = { quota: number; free: number; focQty: number; bonusQty: number; significant: boolean };
+type YearQuotaRow = { quota: number; free: number; focQty: number; bonusQty: number; significant: boolean; warning?: boolean };
 
 type Loaded = {
   matrix: AccountMatrix;
@@ -62,7 +62,7 @@ function VsQuota({ row, split, annual }: { row: YearQuotaRow | undefined; split:
   const given = givenFor(row, split);
   const diff = given - row.quota;
   const pct = row.quota > 0 ? (given / row.quota) * 100 : null;
-  const status = row.significant ? "Over Quota" : row.free > row.quota ? "Over" : "Within";
+  const status = row.significant ? "Over Quota" : row.warning ? "Warning" : row.free > row.quota ? "Over" : "Within";
   return (
     <span className="inline-flex flex-col items-end gap-0.5 whitespace-nowrap tabular-nums">
       <span className={cn("text-sm font-semibold", annual && pct !== null ? BAND_TEXT[quotaBand(pct)] : "text-ink")}>
@@ -70,6 +70,7 @@ function VsQuota({ row, split, annual }: { row: YearQuotaRow | undefined; split:
         <span className={cn("text-xs font-medium", diff > 0 ? "text-negative" : "text-positive")}>({signed(diff)})</span>
       </span>
       {status === "Over Quota" && <Badge tone="negative">Over Quota</Badge>}
+      {status === "Warning" && <Badge tone="warning">Warning</Badge>}
       {status === "Over" && <Badge tone="warning">Over</Badge>}
       {status === "Within" && <Badge tone="positive">Within</Badge>}
     </span>
@@ -95,6 +96,7 @@ export function AccountMatrixPanel({
   itemGroups,
   product,
   quotaMode,
+  allYears = false,
   onFullDetail,
 }: {
   name: string;
@@ -105,12 +107,14 @@ export function AccountMatrixPanel({
   /** The page's `pl3` param, "" = default Product. */
   product: string;
   quotaMode: "formula" | "annual";
+  /** Year filter is All years: the summary tiles cover every loaded month. */
+  allYears?: boolean;
   onFullDetail: () => void;
 }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [split, setSplit] = useState<Split>("both");
-  const igQuery = `${itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : ""}${product ? `&pl3=${encodeURIComponent(product)}` : ""}`;
+  const igQuery = `${allYears ? "&span=all" : ""}${itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : ""}${product ? `&pl3=${encodeURIComponent(product)}` : ""}`;
 
   useEffect(() => {
     // The parent keys this panel by name+year, so a change remounts with
@@ -144,7 +148,7 @@ export function AccountMatrixPanel({
 
   return (
     <div className="px-1 pb-4 pt-3">
-      {net && <NetStrip net={net} />}
+      {net && <NetStrip net={net} period={allYears ? "all loaded months" : String(year)} />}
       {annual && <AnnualStrip yq={yq} />}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div role="group" aria-label="FOC or Bonus" className="inline-flex overflow-hidden rounded-lg border border-line-strong text-xs">
@@ -283,16 +287,18 @@ function CardStat({ label, value, title, strong }: { label: string; value: strin
 }
 
 /** Quota value / Bonus given / Net excess / Stand-alone FOC for the account, above the matrix. */
-function NetStrip({ net }: { net: NetSummary }) {
+function NetStrip({ net, period }: { net: NetSummary; period: string }) {
   const tile = "rounded-lg border border-line bg-canvas px-3 py-2";
   return (
+    <>
+    <p className="mb-1 text-xs text-muted">Account summary for {period}: Actual Bonus (given) vs Quota Bonus (earned by the formula), both at master prices.</p>
     <dl className="mb-3 grid grid-cols-2 gap-2 text-xs lg:grid-cols-4" aria-label="Account quota summary">
       <div className={tile} title={`${net.entitledValue.toLocaleString()} THB at master prices, optional items excluded`}>
-        <dt className="text-muted" title="Quota earned over all loaded months, valued at master prices">Quota value (to date)</dt>
+        <dt className="text-muted" title={`Bonus the formula says the account has earned from the reagents sold in ${period}, valued at master prices`}>Quota Bonus</dt>
         <dd className="text-sm tabular-nums text-ink">{compactThb(net.entitledValue)} THB</dd>
       </div>
       <div className={tile} title={`${net.bonusValue.toLocaleString()} THB`}>
-        <dt className="text-muted">Bonus given</dt>
+        <dt className="text-muted" title={`Bonus the reps actually gave in ${period} (FOC not included), valued at master prices`}>Actual Bonus</dt>
         <dd className="text-sm tabular-nums text-ink">{compactThb(net.bonusValue)} THB</dd>
       </div>
       <div className={tile} title={`${net.excessValue.toLocaleString()} THB`}>
@@ -310,6 +316,7 @@ function NetStrip({ net }: { net: NetSummary }) {
         </dd>
       </div>
     </dl>
+    </>
   );
 }
 

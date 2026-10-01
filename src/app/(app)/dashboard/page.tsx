@@ -9,7 +9,7 @@ import { ActualsFilters } from "@/components/dashboard/ActualsFilters";
 import { ExcludeNaToggle } from "@/components/dashboard/ExcludeNaToggle";
 import { OverQuotaToggle } from "@/components/dashboard/OverQuotaToggle";
 import { loadDashboardScope } from "@/lib/dashboard/scope";
-import { VIEWS, inPeriodScope, matrixYear, type DashboardParams, type DashboardView } from "@/lib/dashboard/filters";
+import { ALL_YEARS, VIEWS, inPeriodScope, matrixYear, type DashboardParams, type DashboardView } from "@/lib/dashboard/filters";
 import { financeByMonth, withRatio } from "@/lib/dashboard/focFinance";
 import { LEGACY_PRODUCT, loadProductSettings } from "@/lib/dashboard/importSettings";
 import { loadDataThrough } from "@/lib/dashboard/dataThrough";
@@ -21,6 +21,7 @@ import { AlertsView } from "@/components/dashboard/AlertsView";
 import { annualOverAccounts, overQuotaAccounts, standaloneFocAccounts } from "@/lib/dashboard/alertLists";
 import { DashboardViewTabs } from "@/components/dashboard/DashboardViewTabs";
 import { FocActualsAccountTable } from "@/components/dashboard/FocActualsAccountTable";
+import { DeltaChip } from "@/components/dashboard/DeltaChip";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { BarChart } from "@/components/dashboard/BarChart";
 import { DonutChart } from "@/components/dashboard/DonutChart";
@@ -28,8 +29,8 @@ import { RatioBadge } from "@/components/dashboard/RatioBadge";
 import { productLabel } from "@/lib/dashboard/accountQuota";
 import { Card } from "@/components/ui";
 
-const REVENUE_COLOR = "#0b41cd"; // matches --brand
-const FOC_VALUE_COLOR = "#eb6834";
+const REVENUE_COLOR = "var(--chart-revenue)";
+const FOC_VALUE_COLOR = "var(--chart-foc)";
 const money = (n: number) => `${Math.round(n).toLocaleString()} THB`;
 const revFocSeries = [
   { key: "revenue", label: "Revenue", color: REVENUE_COLOR },
@@ -73,7 +74,7 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
   // excluding them is a separate toggle from ">20% only" (which, correctly,
   // still counts an N/A account as a breach: an unbillable give-away is worse
   // than 20%, not undefined for that purpose).
-  const { allActuals, years, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, product, productChoices, quotaMode } = await loadDashboardScope(params);
+  const { allActuals, years, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, product, productChoices, quotaMode, year: scopeYear, compare, priorFacts } = await loadDashboardScope(params);
 
   if (allActuals.length === 0) {
     return (
@@ -81,7 +82,7 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
         {isAdmin && <FocActualsImportControl allowedProductLines={allowedProductLines} dataThrough={dataThrough} />}
         {/* A Product with nothing imported yet still needs its picker, or there is no way back. */}
         {params.pl3 && (
-          <ActualsFilters view="overview" years={[]} accountNames={[]} accountCount={0} itemGroupChoices={[]} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
+          <ActualsFilters view="overview" years={[]} year="" accountNames={[]} accountCount={0} itemGroupChoices={[]} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
         )}
         <p className="py-12 text-center text-sm text-muted">
           {params.pl3 ? `No actuals imported for ${productLabel(product)} yet` : "No national actuals imported yet"}
@@ -101,10 +102,10 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
       </p>
 
       <DashboardViewTabs current={view} params={{ ...params }} />
-      <ActualsFilters view={view} years={years} accountNames={accountNames} accountCount={accountRows.length} itemGroupChoices={itemGroupChoices} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
+      <ActualsFilters view={view} years={years} year={scopeYear} accountNames={accountNames} accountCount={accountRows.length} itemGroupChoices={itemGroupChoices} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
 
       {view === "accounts" && <AccountsContent params={params} years={years} accountRows={accountRows} allActuals={allActuals} quotaMode={quotaMode} />}
-      {view === "overview" && <OverviewContent accountRows={accountRows} facts={facts} />}
+      {view === "overview" && <OverviewContent accountRows={accountRows} facts={facts} compare={compare} priorFacts={priorFacts} year={scopeYear ? Number(scopeYear) : null} product={product} itemGroups={params.ig ?? ""} />}
       {view === "alerts" && <AlertsContent accountRows={accountRows} facts={facts} alerts={alerts} annualAlerts={annualAlerts} quotaMode={quotaMode} />}
     </div>
   );
@@ -140,6 +141,7 @@ function AccountsContent({ params, years, accountRows, allActuals, quotaMode }: 
       itemGroups={params.ig ?? ""}
       product={params.pl3 ?? ""}
       quotaMode={quotaMode}
+      allYears={params.year === ALL_YEARS}
     />
   );
 }
@@ -160,7 +162,7 @@ function AlertsContent({ accountRows, facts, alerts, annualAlerts, quotaMode }: 
   return <AlertsView mode={quotaMode} annualOver={annualOver} overQuota={overQuota} standalone={standalone} byMonth={financeByMonth(facts)} byTeam={byTeam} />;
 }
 
-function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRows"]; facts: Scope["facts"] }) {
+function OverviewContent({ accountRows, facts, compare, priorFacts, year, product, itemGroups }: { accountRows: Scope["accountRows"]; facts: Scope["facts"]; compare: Scope["compare"]; priorFacts: Scope["priorFacts"]; year: number | null; product: string; itemGroups: string }) {
   // Drop empty months from display — praditww doesn't want zero-value
   // padding months cluttering the chart (the rolling 12-month window can
   // extend past whatever period was actually imported).
@@ -189,17 +191,24 @@ function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRo
   const totalFocQty = facts.reduce((t, f) => t + f.focQty, 0);
   const totalBonusQty = facts.reduce((t, f) => t + f.bonusQty, 0);
 
+  // The same months of the year before, for the change chips under each tile.
+  const prior = compare ? focCostComposition(priorFacts) : null;
+  const priorCost = prior ? prior.focCost + prior.bonusCost : null;
+  const priorPct = prior && prior.revenue > 0 && priorCost !== null ? (priorCost / prior.revenue) * 100 : null;
+  const chip = (cur: number, prev: number | null | undefined, upIs: "good" | "bad", mode: "pct" | "pp" = "pct") =>
+    compare && prev !== null && prev !== undefined ? <DeltaChip cur={cur} prev={prev} mode={mode} upIs={upIs} label={compare.label} /> : undefined;
+
   const ratioBarSeries = (rows: typeof accountRows) =>
     rows.map((a) => ({ category: a.accountName, values: { revenue: a.revenue, focValue: a.totalCost } }));
 
   return (
     <div>
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile label="Revenue" value={money(totalRevenue)} hint={`${totalSoldQty.toLocaleString()} reagent units sold`} accent={REVENUE_COLOR} />
-        <StatTile label="FOC cost" value={money(totalFocCost)} hint={`${totalFocQty.toLocaleString()} units given FOC`} accent={REVENUE_COLOR} />
-        <StatTile label="Bonus cost" value={money(totalBonusCost)} hint={`${totalBonusQty.toLocaleString()} units given as bonus`} accent={FOC_VALUE_COLOR} />
-        <StatTile label="Total cost (FOC + Bonus)" value={money(totalCost)} hint={`${(totalFocQty + totalBonusQty).toLocaleString()} units given away`} />
-        <StatTile label="Total cost % of revenue" value={`${focPct.toFixed(1)}%`} hint="Target reference: ≤5%" />
+        <StatTile label="Revenue" value={money(totalRevenue)} hint={`${totalSoldQty.toLocaleString()} reagent units sold`} accent={REVENUE_COLOR} delta={chip(totalRevenue, prior?.revenue, "good")} />
+        <StatTile label="FOC cost" value={money(totalFocCost)} hint={`${totalFocQty.toLocaleString()} units given FOC`} accent={REVENUE_COLOR} delta={chip(totalFocCost, prior?.focCost, "bad")} />
+        <StatTile label="Bonus cost" value={money(totalBonusCost)} hint={`${totalBonusQty.toLocaleString()} units given as bonus`} accent={FOC_VALUE_COLOR} delta={chip(totalBonusCost, prior?.bonusCost, "bad")} />
+        <StatTile label="Total cost (FOC + Bonus)" value={money(totalCost)} hint={`${(totalFocQty + totalBonusQty).toLocaleString()} units given away`} delta={chip(totalCost, priorCost, "bad")} />
+        <StatTile label="Total cost % of revenue" value={`${focPct.toFixed(1)}%`} hint="Target reference: ≤5%" delta={chip(focPct, priorPct, "bad", "pp")} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -281,7 +290,7 @@ function OverviewContent({ accountRows, facts }: { accountRows: Scope["accountRo
             <ExcludeNaToggle />
           </div>
         </div>
-        <FocActualsAccountTable rows={accountRows} />
+        <FocActualsAccountTable rows={accountRows} year={year} product={product} itemGroups={itemGroups} />
       </Card>
     </div>
   );

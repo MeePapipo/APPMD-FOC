@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { ALL_YEARS } from "@/lib/dashboard/filters";
 import { DEFAULT_ITEM_GROUPS } from "@/lib/dashboard/itemGroups";
 import { productLabel } from "@/lib/dashboard/accountQuota";
 
@@ -52,6 +53,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 export function ActualsFilters({
   view,
   years,
+  year,
   accountNames,
   accountCount,
   itemGroupChoices,
@@ -62,6 +64,8 @@ export function ActualsFilters({
 }: {
   view: "accounts" | "overview" | "alerts";
   years: number[];
+  /** The year in effect: the picked one, the latest when none is in the URL, "" for all years. */
+  year: string;
   accountNames: string[];
   accountCount: number;
   /** Every Item Group present in the data. */
@@ -106,8 +110,8 @@ export function ActualsFilters({
           ))}
         </select>
 
-        <select aria-label="Year" value={get("year")} onChange={(e) => setParam("year", e.target.value)} className={selectClass}>
-          <option value="">All years</option>
+        <select aria-label="Year" value={year || ALL_YEARS} onChange={(e) => setParam("year", e.target.value)} className={selectClass}>
+          <option value={ALL_YEARS}>All years</option>
           {years.map((y) => (
             <option key={y} value={y}>{y}</option>
           ))}

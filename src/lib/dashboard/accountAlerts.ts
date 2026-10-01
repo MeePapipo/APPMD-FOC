@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { loadEngineData, loadOwnTpbByAccount } from "@/lib/calc/service";
 import { resolveAccountTpb } from "@/lib/calc/accountTpb";
-import { accountNumberFromName, buildGot, recentFromPeriod, type ActualForGot } from "./accountGiven";
+import { accountNumberFromName, buildGot, reagentBillMonths, recentFromPeriod, type ActualForGot } from "./accountGiven";
 import { computeEntitlement, type NetSummary } from "./entitlement";
 import { loadAlertThresholds } from "./alertSettings";
 
@@ -19,6 +19,8 @@ export type AlertItem = {
 export type AccountAlert = {
   /** Item-level Over Quota: information, not an alert (reps legitimately swap one item for another). */
   count: number;
+  /** Items over quota but within +1 per reagent bill (yellow). */
+  warningCount: number;
   cost: number;
   items: AlertItem[];
   /** Account-level verdict: Bonus given vs the whole entitlement, and stand-alone FOC. */
@@ -63,14 +65,14 @@ export async function computeAccountAlerts(
     const no = accountNumberFromName(name);
     const ownTpb = no ? own.ownByAccount.get(idByNumber.get(no) ?? "") : undefined;
     const tpbInput = ownTpb ? resolveAccountTpb(nationalTpb, ownTpb, own.settings).input : nationalTpb;
-    const computed = computeEntitlement(buildGot(rows, recentFrom), assays, items, additionalMats, tpbInput, alert);
+    const computed = computeEntitlement(buildGot(rows, recentFrom), assays, items, additionalMats, tpbInput, alert, reagentBillMonths(rows));
     const { totals } = computed;
     const alertItems = computed.rows
       .filter((r) => r.significant)
       .map((r) => ({ materialNo: r.materialNo, productName: r.productName, expected: r.expected, free: r.free, over: r.over, excessValue: r.excessValue, ratio: r.ratio }))
       .sort((a, b) => b.excessValue - a.excessValue);
     out.set(name, {
-      count: totals.significantCount, cost: totals.significantCost, items: alertItems,
+      count: totals.significantCount, warningCount: totals.warningCount, cost: totals.significantCost, items: alertItems,
       net: computed.net, flagged: computed.net.over || computed.net.focFlagged,
     });
   }

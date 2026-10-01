@@ -269,6 +269,12 @@ export type EntitlementRow = {
    * no entitlement at all). Plain `over > 0` flags every rounding crumb.
    */
   significant: boolean;
+  /**
+   * How far over quota, judged per bill: each reagent bill is allowed +1 of an item as extra Bonus, so
+   * over > bills is "critical" (red) and 1..bills is "warning" (yellow). The percentage rule above stays
+   * as an extra route to critical. `significant` is true exactly when this is "critical". Null = not over.
+   */
+  severity: "critical" | "warning" | null;
 };
 
 /** Admin-tunable thresholds (AlertSettings): item-level `significant` and the account-level net rule. */
@@ -323,6 +329,14 @@ export function alertPctFor(platform: string, a: AlertThresholds): number {
   return a.overPct6800; // 6800 and 4800
 }
 
+/** Per-bill severity: +1 per bill is accepted (yellow), more than that is critical; the % rule can also make it critical. */
+export function overSeverity(over: number, expected: number, bills: number | null, pct: number, minOverUnits: number): "critical" | "warning" | null {
+  if (over <= 0) return null;
+  const pctCritical = isSignificantOver(over, expected, pct, minOverUnits);
+  if (bills === null) return pctCritical ? "critical" : "warning";
+  return over > bills || pctCritical ? "critical" : "warning";
+}
+
 export function isSignificantOver(over: number, expected: number, pct: number, minOverUnits: number): boolean {
   if (over < minOverUnits) return false;
   return expected <= 0 || (over / expected) * 100 > pct;
@@ -334,10 +348,13 @@ export type EntitlementResult = {
   rows: EntitlementRow[];
   totals: {
     overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number;
-    significantCount: number; // rows over quota beyond the alert thresholds
+    significantCount: number; // rows over quota beyond the alert thresholds (critical)
     significantCost: number; // their excess value
+    warningCount: number; // rows over quota but within +1 per bill
   };
   net: NetSummary;
+  /** Reagent bills the per-bill rule used; null when it was not given (percentage rule only). */
+  bills: number | null;
 };
 
 /**
@@ -352,6 +369,7 @@ export function computeEntitlement(
   additionalMats: Set<string>,
   tpbInput: TpbTableInput,
   alert: AlertThresholds = DEFAULT_ALERT,
+  bills: number | null = null,
 ): EntitlementResult {
   const platformInfo = detectPlatform(got);
   const { candidates } = platformInfo;
@@ -385,7 +403,7 @@ export function computeEntitlement(
   const wrongPlatformMat = (mat: string) => !hasRuleMat(mat) && !isReagentMat(mat) && definedAnywhere(mat);
 
   const rows: EntitlementRow[] = [];
-  const totals = { overCost: 0, withinCost: 0, noRuleCost: 0, reagentFreeCost: 0, wrongPlatformCost: 0, additionalCost: 0, significantCount: 0, significantCost: 0 };
+  const totals = { overCost: 0, withinCost: 0, noRuleCost: 0, reagentFreeCost: 0, wrongPlatformCost: 0, additionalCost: 0, significantCount: 0, significantCost: 0, warningCount: 0 };
   const alertPct = alertPctFor(platformInfo.platform, alert);
   // Account-level net: formula items only (optional tubes, sample cups and the like are
   // not tied to the formula), Bonus valued at master prices on both sides.
@@ -406,21 +424,21 @@ export function computeEntitlement(
     if (wrongPlatformMat(mat)) {
       if (free > 0) {
         totals.wrongPlatformCost += d.freeCost;
-        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "wrongPlatform", significant: false });
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "wrongPlatform", significant: false, severity: null });
       }
       continue;
     }
     if (additionalMats.has(mat)) {
       if (free > 0) {
         totals.additionalCost += d.freeCost;
-        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "additional", significant: false });
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "additional", significant: false, severity: null });
       }
       continue;
     }
     if (!hasRuleMat(mat)) {
       if (free > 0) {
         totals.noRuleCost += d.freeCost;
-        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "noRule", significant: false });
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "noRule", significant: false, severity: null });
       }
       continue;
     }
@@ -430,6 +448,7 @@ export function computeEntitlement(
     const over = free - exp;
     const ratio = exp > 0 ? free / exp : null;
     const item = items.find((i) => i.materialNo === mat && (candidates.includes(i.system as Sys658) || i.system === "4800"));
+    const severity = overSeverity(over, exp, bills, alertPct, alert.minOverUnits);
     const row: EntitlementRow = {
       materialNo: mat,
       productName: d.productName,
@@ -444,7 +463,8 @@ export function computeEntitlement(
       over,
       ratio,
       bucket: over > 0 ? "over" : "within",
-      significant: over > 0 && isSignificantOver(over, exp, alertPct, alert.minOverUnits),
+      significant: severity === "critical",
+      severity,
     };
     rows.push(row);
     if (!row.optional) {
@@ -457,6 +477,8 @@ export function computeEntitlement(
     if (row.significant) {
       totals.significantCount += 1;
       totals.significantCost += row.excessValue;
+    } else if (severity === "warning") {
+      totals.warningCount += 1;
     }
   }
   totals.overCost = Math.round(totals.overCost);
@@ -474,5 +496,5 @@ export function computeEntitlement(
     return { code, tests: r658?.tests[code] ?? res48.tests[code] ?? 0, batches: r658?.batches[code] ?? 0 };
   });
 
-  return { platform: platformInfo, assayTests, rows, totals, net: netVerdict(entitledValue, bonusValue, focStandaloneCost, alert) };
+  return { platform: platformInfo, assayTests, rows, totals, net: netVerdict(entitledValue, bonusValue, focStandaloneCost, alert), bills };
 }

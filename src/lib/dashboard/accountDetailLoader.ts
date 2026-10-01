@@ -1,20 +1,20 @@
 import { prisma } from "@/lib/prisma";
 import { loadEngineData } from "@/lib/calc/service";
-import { alertPctFor, computeEntitlement, isSignificantOver } from "./entitlement";
+import { alertPctFor, computeEntitlement, overSeverity } from "./entitlement";
 import type { EntitlementLite } from "./focExports";
-import { accountNumberFromName, buildGot, recentFromPeriod } from "./accountGiven";
+import { accountNumberFromName, buildGot, reagentBillMonths, recentFromPeriod } from "./accountGiven";
 import { loadDataThrough } from "./dataThrough";
 import { loadAlertThresholds } from "./alertSettings";
 import { inItemGroups } from "./itemGroups";
-import { loadProductSettings, productOf } from "./importSettings";
+import { LEGACY_PRODUCT, loadProductSettings, productOf } from "./importSettings";
 import { annualItems } from "./annualQuota";
 
 /** One reagent-consumable item for one calendar year: the quota earned in the year and what was given in it (units). */
-export type YearQuota = { quota: number; free: number; focQty: number; bonusQty: number; significant: boolean };
+export type YearQuota = { quota: number; free: number; focQty: number; bonusQty: number; significant: boolean; warning?: boolean };
 
 /** The year view as the lite rows the CSV/PDF builders and the matrix panel read. */
 export function yearEntitlementLite(yq: Record<string, YearQuota>): (EntitlementLite & { focQty: number; bonusQty: number })[] {
-  return Object.entries(yq).map(([materialNo, v]) => ({ materialNo, expected: v.quota, free: v.free, focQty: v.focQty, bonusQty: v.bonusQty, significant: v.significant }));
+  return Object.entries(yq).map(([materialNo, v]) => ({ materialNo, expected: v.quota, free: v.free, focQty: v.focQty, bonusQty: v.bonusQty, significant: v.significant, warning: v.warning }));
 }
 
 /** Whichever value appears on the most rows — the "dominant tag" convention
@@ -33,11 +33,15 @@ const dominant = (values: (string | null)[]): string | null => {
  * by the drilldown/matrix route and the per-account exports. Null when the
  * account has no rows. `itemGroups` (the `ig` selection, null = default groups)
  * filters the product rows; the entitlement always covers the default groups,
- * the formula's own. `product` (the Dashboard's Product filter, null = every Product)
+ * the formula's own. `productPick` (the Dashboard's Product filter, null = the default Product)
  * narrows the rows to one Product and picks the quota source: formula Products use
  * the cumulative formula, the others the annual Quota(Year) from Tableau.
  */
-export async function loadAccountDetail(name: string, itemGroups: string[] | null = null, product: string | null = null) {
+export async function loadAccountDetail(name: string, itemGroups: string[] | null = null, productPick: string | null = null) {
+  const productSettings = await loadProductSettings();
+  // No pick = the Dashboard's default Product, never "every Product": Core Lab and Pathology items
+  // (chemistry, immunoassay) would otherwise show up in a Molecular account's sold and given lists.
+  const product = productPick || productSettings.formula[0] || LEGACY_PRODUCT;
   const fetched = await prisma.focActual.findMany({
     where: { accountName: name },
     select: {
@@ -45,9 +49,8 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
       revenue: true, revenueQty: true, soldQty: true, focCost: true, focQty: true, bonusCost: true, bonusQty: true,
     },
   });
-  const allRows = product === null ? fetched : fetched.filter((r) => productOf(r.product) === product);
-  const productSettings = await loadProductSettings();
-  const annualMode = product !== null && !productSettings.formula.includes(product);
+  const allRows = fetched.filter((r) => productOf(r.product) === product);
+  const annualMode = !productSettings.formula.includes(product);
   // Item Groups are a formula-Product notion (Molecular's controls/consumables); the annual-quota
   // Products show every Item Group they have.
   const rows = annualMode ? allRows : allRows.filter((r) => inItemGroups(r.category, itemGroups));
@@ -72,7 +75,7 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
   // scoring their items against rules that do not apply to them.
   const entitlement = annualMode
     ? computeEntitlement(new Map(), assays, items, additionalMats, tpbInput, alert)
-    : computeEntitlement(buildGot(allRows.filter((r) => inItemGroups(r.category, null)), recentFromPeriod(through.latest)), assays, items, additionalMats, tpbInput, alert);
+    : computeEntitlement(buildGot(allRows.filter((r) => inItemGroups(r.category, null)), recentFromPeriod(through.latest)), assays, items, additionalMats, tpbInput, alert, reagentBillMonths(allRows));
 
   // Quota earned in a calendar year = the cumulative quota at that year's end minus the cumulative
   // quota at the end of the year before (no rounding jump at New Year; the years add up to the
@@ -100,15 +103,29 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     const before = [...yearsAsc].reverse().find((y) => y < year);
     const prev = before === undefined ? {} : cumulative.get(before)!;
     const now = cumulative.get(year) ?? {};
-    const given = buildGot(defaultRows.filter((r) => r.year === year));
+    const yearRows = defaultRows.filter((r) => r.year === year);
+    const given = buildGot(yearRows);
+    // +1 of an item is accepted per reagent bill of that year.
+    const bills = reagentBillMonths(allRows.filter((r) => r.year === year));
     const out: Record<string, YearQuota> = {};
     for (const mat of ruleMats) {
       const quota = Math.max(0, (now[mat] ?? 0) - (prev[mat] ?? 0));
       const g = given.get(mat);
       const focQty = g?.foc ?? 0, bonusQty = g?.bonus ?? 0, free = focQty + bonusQty;
-      out[mat] = { quota, free, focQty, bonusQty, significant: isSignificantOver(free - quota, quota, alertPct, alert.minOverUnits) && free > quota };
+      const severity = overSeverity(free - quota, quota, bills, alertPct, alert.minOverUnits);
+      out[mat] = { quota, free, focQty, bonusQty, significant: severity === "critical", warning: severity === "warning" };
     }
     return out;
+  };
+
+  // The account-level net (Quota value, Bonus given, stand-alone FOC) for one calendar year, so the summary
+  // tiles cover the same period as the matrix and the cost figures; null = every loaded month.
+  const netForYear = (year: number | null) => {
+    const inYear = (r: { year: number }) => year === null || r.year === year;
+    return computeEntitlement(
+      buildGot(defaultRows.filter(inYear), year === null ? recentFromPeriod(through.latest) : undefined),
+      assays, items, additionalMats, tpbInput, alert, reagentBillMonths(allRows.filter(inYear)),
+    ).net;
   };
 
   // Pack size per reagent material (6800 and 5800 share material numbers and sizes), for boxes -> tests.
@@ -123,6 +140,7 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
     entitlement,
     quotaMode: (annualMode ? "annual" : "formula") as "annual" | "formula",
     yearQuotaFor,
+    netForYear,
     accountNumber: name.match(/\(([^()]+)\)\s*$/)?.[1] ?? null,
     ownTpbUsed: [...(tpbDetail?.values() ?? [])].some((d) => d.source !== "national"),
     team: dominant(allRows.map((r) => r.team)),

@@ -7,8 +7,8 @@ import { EntitlementTable } from "./EntitlementTable";
 import { LineChart } from "./LineChart";
 import { StatTile } from "./StatTile";
 
-const REVENUE_COLOR = "#0b41cd";
-const FOC_VALUE_COLOR = "#eb6834";
+const REVENUE_COLOR = "var(--chart-revenue)";
+const FOC_VALUE_COLOR = "var(--chart-foc)";
 const money = (n: number) => `${Math.round(n).toLocaleString()} THB`;
 
 type AccountDetail = {
@@ -29,18 +29,36 @@ type AccountDetail = {
       free: number; sold: number; freeCost: number; excessValue: number; over: number; ratio: number | null;
       bucket: "over" | "within" | "noRule" | "reagent" | "wrongPlatform" | "additional";
     }[];
-    totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number; significantCount: number; significantCost: number };
+    bills?: number | null;
+    totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number; significantCount: number; significantCost: number; warningCount: number };
   };
 };
 
 /** Per-account deep-dive, opened from a row in `FocActualsAccountTable`.
- * Deliberately shows the account's full history regardless of the page's
- * year/month filter (see `/api/dashboard/account`) — this is "everything
- * about this account", not "this account within the current filter". Panel
+ * The KPI tiles and the product lists cover the account's full history in the
+ * page's Product; the two trend charts show the selected year only. Panel
  * order (header/KPIs -> monthly trend -> ratio line -> products given ->
  * quota table -> products sold) mirrors the reference dashboard's own
  * account modal exactly, per praditww's "ทำให้เหมือนต้นแบบ" ask. */
-export function AccountDrilldown({ accountName, onClose }: { accountName: string; onClose: () => void }) {
+/** 4,420,024 -> 4.4M, 475,070 -> 475K: bar labels that fit above a narrow bar. */
+const compact = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e3 ? `${Math.round(n / 1e3)}K` : String(Math.round(n)));
+
+export function AccountDrilldown({
+  accountName,
+  year = null,
+  product = "",
+  itemGroups = "",
+  onClose,
+}: {
+  accountName: string;
+  /** The year the trend charts show; null = the whole history. */
+  year?: number | null;
+  /** The page's `pl3` param, "" = the default Product. */
+  product?: string;
+  /** The page's `ig` param, "" = the default Item Groups. */
+  itemGroups?: string;
+  onClose: () => void;
+}) {
   const [detail, setDetail] = useState<AccountDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +67,8 @@ export function AccountDrilldown({ accountName, onClose }: { accountName: string
     // (`key={selected}`), so switching accounts remounts with fresh state
     // rather than needing an effect to clear the previous account's data.
     let cancelled = false;
-    fetch(`/api/dashboard/account?name=${encodeURIComponent(accountName)}`)
+    const query = `name=${encodeURIComponent(accountName)}${year ? `&year=${year}` : ""}${itemGroups ? `&ig=${encodeURIComponent(itemGroups)}` : ""}${product ? `&pl3=${encodeURIComponent(product)}` : ""}`;
+    fetch(`/api/dashboard/account?${query}`)
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Failed to load account.");
         return res.json();
@@ -57,7 +76,7 @@ export function AccountDrilldown({ accountName, onClose }: { accountName: string
       .then((data) => { if (!cancelled) setDetail(data); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load account."); });
     return () => { cancelled = true; };
-  }, [accountName]);
+  }, [accountName, year, product, itemGroups]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -115,8 +134,8 @@ export function AccountDrilldown({ accountName, onClose }: { accountName: string
               </div>
 
               <div>
-                <h3 className="mb-1 text-sm font-semibold text-ink">Monthly trend (full history)</h3>
-                <p className="mb-3 text-xs text-muted">Independent of the page&apos;s month filter — every month of this account.</p>
+                <h3 className="mb-1 text-sm font-semibold text-ink">Monthly trend{year ? ` ${year}` : " (full history)"}</h3>
+                <p className="mb-3 text-xs text-muted">Revenue and FOC value (THB) per month{year ? ` of ${year}` : ""}, independent of the page&apos;s month filter.</p>
                 <BarChart
                   data={detail.monthly.map((m) => ({ category: m.label, values: { revenue: m.revenue, focValue: m.focValue } }))}
                   series={[
@@ -124,11 +143,12 @@ export function AccountDrilldown({ accountName, onClose }: { accountName: string
                     { key: "focValue", label: "FOC value", color: FOC_VALUE_COLOR },
                   ]}
                   valueFormat={(n) => n.toLocaleString()}
+                  labelFormat={compact}
                 />
               </div>
 
               <div>
-                <h3 className="mb-1 text-sm font-semibold text-ink">% Total cost / revenue</h3>
+                <h3 className="mb-1 text-sm font-semibold text-ink">% Total cost / revenue{year ? ` ${year}` : ""}</h3>
                 <LineChart
                   data={detail.monthly.map((m) => ({ label: m.label, value: Number.isFinite(m.ratio) ? m.ratio * 100 : null }))}
                   referenceValue={20}

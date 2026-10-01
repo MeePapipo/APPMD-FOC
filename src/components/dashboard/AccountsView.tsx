@@ -10,6 +10,7 @@ import { AccountDrawer } from "./AccountDrawer";
 import { AccountDrilldown } from "./AccountDrilldown";
 import {
   columnsFor,
+  costDelta,
   ACCOUNT_NAME_COLUMN,
   FocOnlyCell,
   QuotaCell,
@@ -59,6 +60,7 @@ export function AccountsView({
   itemGroups,
   product,
   quotaMode,
+  allYears,
 }: {
   rows: AccountRow[];
   year: number;
@@ -72,6 +74,8 @@ export function AccountsView({
   /** `pl3` search param, "" = the default Product. */
   product: string;
   quotaMode: "formula" | "annual";
+  /** The Year filter is "All years": the summary tiles cover every loaded month, not just `year`. */
+  allYears: boolean;
 }) {
   const columns = useMemo(() => columnsFor(quotaMode === "annual"), [quotaMode]);
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
@@ -170,6 +174,7 @@ export function AccountsView({
                       <div className="text-xs text-muted">{number ? `No. ${number}` : "—"}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted">
                         <span>{money(r.totalCost)}</span>
+                        {costDelta(r)}
                         <RatioBadge ratio={r.ratio} />
                       </div>
                       {(r.net || r.annual) && (
@@ -267,13 +272,14 @@ export function AccountsView({
           itemGroups={itemGroups}
           product={product}
           quotaMode={quotaMode}
+          allYears={allYears}
           suspended={detail !== null}
           onClose={close}
           onStep={step}
           onFullDetail={() => setDetail(selectedRow.accountName)}
         />
       )}
-      {detail && <AccountDrilldown key={detail} accountName={detail} onClose={() => setDetail(null)} />}
+      {detail && <AccountDrilldown key={detail} accountName={detail} year={year} product={product} itemGroups={itemGroups} onClose={() => setDetail(null)} />}
     </div>
   );
 }

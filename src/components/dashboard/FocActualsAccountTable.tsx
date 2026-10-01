@@ -34,7 +34,7 @@ const money = (n: number) => Math.round(n).toLocaleString();
 /** Client-side sort only — `rows` arrive already filtered by the server
  * component (year/month/team/search/threshold), so sorting never needs a
  * round trip. Default sort matches the "Top 10 by cost" panel above it. */
-export function FocActualsAccountTable({ rows }: { rows: AccountRow[] }) {
+export function FocActualsAccountTable({ rows, year = null, product = "", itemGroups = "" }: { rows: AccountRow[]; year?: number | null; product?: string; itemGroups?: string }) {
   const [sortKey, setSortKey] = useState<SortKey>("totalCost");
   const [desc, setDesc] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -115,7 +115,7 @@ export function FocActualsAccountTable({ rows }: { rows: AccountRow[] }) {
         </tbody>
       </table>
 
-      {selected && <AccountDrilldown key={selected} accountName={selected} onClose={() => setSelected(null)} />}
+      {selected && <AccountDrilldown key={selected} accountName={selected} year={year} product={product} itemGroups={itemGroups} onClose={() => setSelected(null)} />}
     </div>
   );
 }

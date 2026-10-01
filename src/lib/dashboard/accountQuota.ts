@@ -5,6 +5,7 @@ export type QuotaRowLike = {
   net: NetSummary | null;
   flagged: boolean;
   overCount: number;
+  warnCount?: number;
   /** Annual-quota Products: items with a quota, how many are over it, units above (null = formula Product). */
   annual?: { itemsWithQuota: number; itemsOver: number; excessUnits: number } | null;
 };
@@ -22,15 +23,22 @@ export function compactThb(n: number): string {
 export const formatOverPct = (pct: number | null): string =>
   pct === null ? "no entitlement" : `${pct > 0 ? "+" : ""}${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
 
+/** Items over quota, split by how far: red = more than +1 per reagent bill, yellow = within it. */
+function itemsLine(red: number, yellow: number): string | null {
+  if (red + yellow === 0) return null;
+  const parts = [red > 0 && `${red} red`, yellow > 0 && `${yellow} yellow`].filter(Boolean);
+  return `Items over quota: ${parts.join(" · ")}`;
+}
+
 /** What the Quota column shows: null when the account has no entitlement verdict at all. */
 export function quotaSummary(r: QuotaRowLike): { over: boolean; line: string; pct: string; items: string | null } | null {
   if (!r.net) return null;
   const { net } = r;
   return {
     over: net.over,
-    line: `Bonus ${compactThb(net.bonusValue)} / Entitled ${compactThb(net.entitledValue)}`,
+    line: `Actual Bonus ${compactThb(net.bonusValue)} vs Quota Bonus ${compactThb(net.entitledValue)}`,
     pct: formatOverPct(net.overPct),
-    items: r.overCount > 0 ? `${r.overCount} item${r.overCount === 1 ? "" : "s"} Over Quota` : null,
+    items: itemsLine(r.overCount, r.warnCount ?? 0),
   };
 }
 

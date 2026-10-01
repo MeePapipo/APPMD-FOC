@@ -76,16 +76,16 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
         <div className="flex flex-wrap gap-x-8 gap-y-5">
           <Field id="netpct" label="Bonus over entitlement by more than (%)" hint="25 means Bonus worth more than 125% of the entitlement." value={form.netOverPct} onChange={set("netOverPct")} step={1} max={1000} />
           <Field id="netmin" label="and by at least (THB)" hint="Small absolute overshoots are ignored." value={form.netMinExcess} onChange={set("netMinExcess")} step={1000} max={100000000} />
-          <Field id="focmin" label="Stand-alone FOC flagged from (THB, last 12 months)" hint="FOC given with no reagent sale (it carries VAT) is not compared with the formula; an account is flagged once its FOC cost over the latest 12 months of data reaches this." value={form.focStandaloneMin} onChange={set("focStandaloneMin")} step={1000} max={100000000} />
+          <Field id="focmin" label="Stand-alone FOC flagged from (THB, selected year)" hint="FOC given with no reagent sale (it carries VAT) is not compared with the formula; an account is flagged once its FOC cost in the year selected on the Dashboard reaches this (the latest 12 months of data when the Year filter is All years)." value={form.focStandaloneMin} onChange={set("focStandaloneMin")} step={1000} max={100000000} />
         </div>
       </section>
 
       <section aria-labelledby="alert-heading">
         <h2 id="alert-heading" className="mb-1 text-sm font-semibold text-ink">Item Over Quota (information)</h2>
         <p className="mb-4 max-w-2xl text-xs text-muted">
-          Shown on each item, not counted as an alert. An item is marked when the account has been given at least the minimum number of units above its
-          entitlement <em>and</em> the excess is more than the percentage below of that entitlement. An item with no
-          entitlement at all is flagged once it reaches the minimum units.
+          Shown on each item, not counted as an alert. Each reagent bill (a month with reagent sales) is allowed +1 of an item as extra Bonus: over quota by no more than the
+          number of bills is a yellow Warning, over by more than that is a red Over Quota. The percentage below is a second route to red: an item is also red when the
+          excess is at least the minimum number of units <em>and</em> more than that percentage of its entitlement. Set the percentage very high to rely on the bill rule alone.
         </p>
         <div className="flex flex-wrap gap-x-8 gap-y-5">
           <Field id="pct6800" label="cobas 6800/8800: over by more than (%)" hint="Also used for cobas 4800. An account with both platforms uses the lower of the two percentages." value={form.overPct6800} onChange={set("overPct6800")} step={0.5} max={1000} />

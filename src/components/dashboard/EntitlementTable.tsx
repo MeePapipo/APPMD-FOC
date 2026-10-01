@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { ROW_HOVER } from "@/lib/hoverStyles";
@@ -19,19 +19,21 @@ type EntitlementRow = {
   over: number;
   ratio: number | null;
   bucket: "over" | "within" | "noRule" | "reagent" | "wrongPlatform" | "additional";
-  significant?: boolean; // over quota beyond the admin's alert thresholds
+  significant?: boolean; // critical: over quota beyond +1 per bill or the admin's % threshold
+  severity?: "critical" | "warning" | null; // warning: over, but within +1 per bill
 };
 
 type Entitlement = {
   platform: { platform: string; basis: string; has4800: boolean };
   assayTests: { code: string; tests: number; batches: number }[];
   rows: EntitlementRow[];
-  totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number; significantCount: number; significantCost: number };
+  totals: { overCost: number; withinCost: number; noRuleCost: number; reagentFreeCost: number; wrongPlatformCost: number; additionalCost: number; significantCount: number; significantCost: number; warningCount: number };
+  bills?: number | null;
 };
 
 const money = (n: number) => `${Math.round(n).toLocaleString()}`;
 
-type SortKey = "productName" | "expected" | "focQty" | "bonusQty" | "free" | "sold" | "over" | "ratio" | "excessValue";
+type SortKey = "productName" | "expected" | "focQty" | "bonusQty" | "free" | "over" | "ratio" | "excessValue";
 
 const COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "productName", label: "สินค้า" },
@@ -39,7 +41,6 @@ const COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "focQty", label: "FOC", align: "right" },
   { key: "bonusQty", label: "Bonus", align: "right" },
   { key: "free", label: "รวมแถม", align: "right" },
-  { key: "sold", label: "ซื้อเอง", align: "right" },
   { key: "over", label: "ส่วนเกิน", align: "right" },
   { key: "ratio", label: "เท่าของสิทธิ์", align: "right" },
   { key: "excessValue", label: "มูลค่าส่วนเกิน (฿)", align: "right" },
@@ -120,7 +121,12 @@ export function EntitlementTable({ entitlement }: { entitlement: Entitlement }) 
             .join(" · ")}
         </p>
       )}
-      <p className="mb-3 text-xs text-muted">ครอบคลุมทั้งช่วงข้อมูล ไม่ขึ้นกับตัวกรองเดือน · จำนวนเป็นกล่อง</p>
+      <p className="mb-1 text-xs text-muted">ครอบคลุมทั้งช่วงข้อมูล ไม่ขึ้นกับตัวกรองเดือน · จำนวนเป็นกล่อง</p>
+      {typeof entitlement.bills === "number" && (
+        <p className="mb-3 text-xs text-muted">
+          บิลน้ำยา (เดือนที่มียอดขาย) {entitlement.bills.toLocaleString()} บิล · แถมเกินสิทธิ์ไม่เกิน +{entitlement.bills.toLocaleString()} = <span className="font-medium text-warning">Warning</span> (เหลือง) · เกินกว่านั้น = <span className="font-medium text-negative">Over Quota</span> (แดง)
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full min-w-[720px] text-sm">
@@ -151,9 +157,9 @@ export function EntitlementTable({ entitlement }: { entitlement: Entitlement }) 
               if (rows.length === 0 && total === 0) return null;
               const isOpen = open.has(b.key);
               return (
-                <>
-                  <tr key={b.key} className="border-b border-line bg-canvas/60">
-                    <td colSpan={8} className="py-2 pl-3 pr-3">
+                <Fragment key={b.key}>
+                  <tr className="border-b border-line bg-canvas/60">
+                    <td colSpan={7} className="py-2 pl-3 pr-3">
                       <button type="button" onClick={() => toggle(b.key)} className="inline-flex items-center gap-1.5 text-left font-medium text-ink">
                         <span aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
                         {b.title} · {rows.length} รายการ · {b.hint}
@@ -178,23 +184,27 @@ export function EntitlementTable({ entitlement }: { entitlement: Entitlement }) 
                                 <Badge tone="negative">Over Quota</Badge>
                               </span>
                             )}
+                            {!r.significant && r.severity === "warning" && (
+                              <span className="ml-2 align-middle">
+                                <Badge tone="warning">Warning</Badge>
+                              </span>
+                            )}
                           </td>
                           <td className="py-2 pr-3 text-right tabular-nums text-muted">{hasQuota ? r.expected.toLocaleString() : "—"}</td>
                           <td className="py-2 pr-3 text-right tabular-nums text-muted">{r.focQty.toLocaleString()}</td>
                           <td className="py-2 pr-3 text-right tabular-nums text-muted">{r.bonusQty.toLocaleString()}</td>
                           <td className="py-2 pr-3 text-right tabular-nums font-medium text-ink">{r.free.toLocaleString()}</td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-muted">{r.sold.toLocaleString()}</td>
-                          <td className={`py-2 pr-3 text-right tabular-nums font-medium ${r.over > 0 ? "text-negative" : "text-muted"}`}>
+                          <td className={`py-2 pr-3 text-right tabular-nums font-medium ${r.significant ? "text-negative" : r.severity === "warning" ? "text-warning" : "text-muted"}`}>
                             {hasQuota ? (r.over > 0 ? `+${r.over.toLocaleString()}` : r.over.toLocaleString()) : "—"}
                           </td>
-                          <td className={`py-2 pr-3 text-right tabular-nums font-medium ${r.ratio !== null && r.ratio > 1 ? "text-negative" : "text-muted"}`}>
+                          <td className={`py-2 pr-3 text-right tabular-nums font-medium text-muted`}>
                             {r.ratio !== null ? `${r.ratio.toFixed(2)}×` : hasQuota ? "ไม่มีสิทธิ์" : "—"}
                           </td>
                           <td className="py-2 pl-3 pr-3 text-right tabular-nums text-ink">฿{money(r.excessValue)}</td>
                         </tr>
                       );
                     })}
-                </>
+                </Fragment>
               );
             })}
           </tbody>

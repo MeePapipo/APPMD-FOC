@@ -11,14 +11,15 @@ import { MONTH_SHORT, cellValue, type AccountMatrix, type Measure } from "./focA
 export const CSV_BOM = "﻿";
 
 export type EntitlementLite = Pick<EntitlementRow, "materialNo" | "expected" | "free" | "significant"> &
-  Partial<Pick<EntitlementRow, "focQty" | "bonusQty">>;
+  Partial<Pick<EntitlementRow, "focQty" | "bonusQty">> & { warning?: boolean };
 
-export type QuotaStatus = "Over Quota" | "Over" | "Within" | "";
+export type QuotaStatus = "Over Quota" | "Warning" | "Over" | "Within" | "";
 
-/** Over Quota = beyond the admin thresholds; Over = any excess; "" = no quota row. */
+/** Over Quota = beyond +1 per bill or the admin thresholds; Warning = over, within +1 per bill; Over = any other excess; "" = no quota row. */
 export function quotaStatus(e: EntitlementLite | undefined): QuotaStatus {
   if (!e) return "";
   if (e.significant) return "Over Quota";
+  if (e.warning) return "Warning";
   return e.free > e.expected ? "Over" : "Within";
 }
 

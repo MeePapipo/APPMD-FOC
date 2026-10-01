@@ -22,7 +22,7 @@ const Overflow = ({ total }: { total: number }) =>
  * Accounts over quota (Bonus given beyond the whole entitlement, biggest
  * excess first), accounts with stand-alone FOC past its threshold, then the
  * finance tables (cost and cost/revenue by month and by team). Figures are
- * cumulative over each account's history, same as the drawer.
+ * within the selected year (all loaded months for All years), same as the drawer.
  */
 export function AlertsView({
   mode = "formula",
@@ -50,7 +50,7 @@ export function AlertsView({
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-semibold text-ink">Accounts over quota</h2>
         <p className="mb-3 text-xs text-muted">
-          Bonus given (master prices) beyond the whole entitlement, past the thresholds in Settings, by excess value. The items driving it are information: reps legitimately swap one item for another.
+          Actual Bonus (master prices) beyond the Quota Bonus the formula earns, past the thresholds in Settings, by excess value. The items driving it are information: reps legitimately swap one item for another.
         </p>
         {overQuota.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted">No accounts over quota for this filter.</p>
@@ -81,8 +81,8 @@ export function AlertsView({
                 <thead className="bg-brand-tint text-xs text-muted">
                   <tr className="border-y border-line text-left">
                     <th scope="col" className="px-3 py-2">Account</th>
-                    <th scope="col" className="px-3 py-2 text-right">Quota value</th>
-                    <th scope="col" className="px-3 py-2 text-right">Bonus given</th>
+                    <th scope="col" className="px-3 py-2 text-right">Quota Bonus</th>
+                    <th scope="col" className="px-3 py-2 text-right">Actual Bonus</th>
                     <th scope="col" className="px-3 py-2 text-right">Excess (THB)</th>
                     <th scope="col" className="px-3 py-2 text-right">Excess %</th>
                     <th scope="col" className="px-3 py-2">Items driving it</th>

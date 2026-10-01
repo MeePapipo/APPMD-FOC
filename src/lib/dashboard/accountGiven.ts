@@ -4,6 +4,7 @@ export type ActualForGot = {
   materialNo: string;
   productName: string;
   soldQty: number;
+  revenueQty?: number;
   focQty: number;
   bonusQty: number;
   focCost: number;
@@ -11,6 +12,14 @@ export type ActualForGot = {
   year?: number;
   month?: number;
 };
+
+/** The account's reagent "bills": the months in which it bought reagent kits. The Tableau export has no
+ * invoice numbers, so one month with reagent sales counts as one bill (several invoices in a month count once). */
+export function reagentBillMonths(rows: { year?: number; month?: number; revenueQty?: number }[]): number {
+  const months = new Set<number>();
+  for (const r of rows) if ((r.revenueQty ?? 0) > 0 && r.year !== undefined && r.month !== undefined) months.add(r.year * 12 + r.month);
+  return months.size;
+}
 
 /** How far back stand-alone FOC is counted for the alert: a rolling window, not the account's lifetime. */
 export const FOC_ALERT_MONTHS = 12;

@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { focAccountRows, type FocActualFact } from "./focActualsAggregate";
 import { computeAccountAlerts, type AccountAlert } from "./accountAlerts";
-import { inPeriodScope, matrixYear, parseItemGroups, type DashboardParams } from "./filters";
+import { yoyWindow } from "./yoy";
+import { inPeriodScope, matrixYear, parseItemGroups, resolveYear, type DashboardParams } from "./filters";
 import { inItemGroups } from "./itemGroups";
 import { LEGACY_PRODUCT, loadProductSettings } from "./importSettings";
 import { annualSummaries, type AnnualSummary } from "./annualQuota";
@@ -23,7 +24,11 @@ export type ScopeFact = FocActualFact & {
 export type AccountScopeRow = ReturnType<typeof focAccountRows>[number] & {
   /** Item-level Over Quota (information). */
   overCount: number;
+  /** Items over quota but within +1 per reagent bill. */
+  warnCount: number;
   overCost: number;
+  /** The same months of the previous year (null when there is nothing to compare with). */
+  prev?: { revenue: number; totalCost: number; label: string } | null;
   /** Account-level verdict from the net rule; null when alerts were not computed. */
   net: AccountAlert["net"] | null;
   /** Annual-quota Products: this year's items with a quota and how many are over it; null for formula Products. */
@@ -51,6 +56,8 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
   ]);
   const productChoices = [...new Set(productGroups.map((g) => g.product ?? LEGACY_PRODUCT))].sort();
   const years = [...new Set(allActuals.map((f) => f.year))].sort((a, b) => b - a);
+  const year = resolveYear(p, years);
+  p = { ...p, year: year || undefined };
   const itemGroups = parseItemGroups(p.ig);
   // Molecular Lab's default is the four Item Groups the formula knows; the annual-quota Products
   // show every group until one is picked.
@@ -64,9 +71,10 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
   const accountNames = allAccountRows.map((a) => a.accountName).sort((a, b) => a.localeCompare(b));
   const needAlerts = opts.alerts || p.sig === "1";
   const quotaYear = matrixYear(p, years);
-  // Formula Products: the net rule over the formula's own Item Groups, whatever the filter says.
+  // Formula Products: the net rule over the formula's own Item Groups, whatever the filter says, within the
+  // selected year (all loaded months when the Year filter is All years).
   const alerts: Map<string, AccountAlert> =
-    needAlerts && quotaMode === "formula" ? await computeAccountAlerts(allActuals.filter((f) => inItemGroups(f.category, null))) : new Map();
+    needAlerts && quotaMode === "formula" ? await computeAccountAlerts(allActuals.filter((f) => inItemGroups(f.category, null) && (!year || f.year === Number(year)))) : new Map();
   // Annual-quota Products: items over the yearly quota in the shown year.
   const annualAlerts =
     needAlerts && quotaMode === "annual"
@@ -89,6 +97,7 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
     .map((a) => ({
       ...a,
       overCount: alerts.get(a.accountName)?.count ?? 0,
+      warnCount: alerts.get(a.accountName)?.warningCount ?? 0,
       overCost: alerts.get(a.accountName)?.cost ?? 0,
       net: alerts.get(a.accountName)?.net ?? null,
       annual: quotaMode === "annual" ? (annualAlerts.get(a.accountName) ?? { itemsWithQuota: 0, itemsOver: 0, excessUnits: 0 }) : null,
@@ -98,5 +107,20 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
 
   const inScope = new Set(accountRows.map((a) => a.accountName));
   const facts = periodRows.filter((f) => inScope.has(f.accountName));
-  return { allActuals, years, periodRows, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, itemGroups, product, productChoices, quotaMode, quotaYear };
+
+  // Same months of the year before, for the year-on-year chips: same Product, team and Item Groups, and the
+  // accounts currently shown.
+  const compare = yoyWindow(p, year ? Number(year) : null, allActuals);
+  const priorFacts = compare
+    ? allActuals.filter(
+        (f) =>
+          f.year === compare.prevYear && f.month >= compare.from && f.month <= compare.to &&
+          (!p.ateam || (f.team ?? "Unassigned") === p.ateam) && groupOk(f) && inScope.has(f.accountName),
+      )
+    : [];
+  if (compare) {
+    const prior = new Map(focAccountRows(priorFacts).map((a) => [a.accountName, a]));
+    accountRows = accountRows.map((a) => ({ ...a, prev: { revenue: prior.get(a.accountName)?.revenue ?? 0, totalCost: prior.get(a.accountName)?.totalCost ?? 0, label: compare.label } }));
+  }
+  return { allActuals, years, periodRows, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, itemGroups, product, productChoices, quotaMode, quotaYear, year, compare, priorFacts };
 }

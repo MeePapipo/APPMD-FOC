@@ -4,7 +4,7 @@ import { annualOverAccounts, overQuotaAccounts, standaloneFocAccounts } from "./
 
 const item = (materialNo: string, excessValue: number) => ({ materialNo, productName: materialNo, expected: 1, free: 2, over: 1, excessValue, ratio: 2 });
 const alert = (over: boolean, excess: number, focFlagged: boolean, cost: number, items = [item("a", 1)]): AccountAlert => ({
-  count: items.length, cost: 0, items, flagged: over || focFlagged,
+  count: items.length, warningCount: 0, cost: 0, items, flagged: over || focFlagged,
   net: { entitledValue: 100, bonusValue: 100 + excess, excessValue: excess, overPct: excess, over, focStandaloneCost: cost, focFlagged },
 });
 const alerts = new Map<string, AccountAlert>([
