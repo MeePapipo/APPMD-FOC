@@ -24,5 +24,7 @@ export function unitsFor4800Item(item: ItemLite, tests: TestVector): number {
   for (const [code, weight] of Object.entries(item.weights)) {
     sum += (tests[code] ?? 0) * weight;
   }
-  return sum;
+  // A weight such as 8/24 is not exact in floating point: 150 boxes x 24 tests x (8/24) can land a hair
+  // above a whole number, and the caller rounds up. Trim that noise.
+  return Math.round(sum * 1e9) / 1e9;
 }

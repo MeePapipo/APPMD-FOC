@@ -291,3 +291,53 @@ describe("overSeverity: +1 extra Bonus accepted per reagent bill", () => {
     expect(overSeverity(60, 321, null, 15, 1)).toBe("critical");
   });
 });
+
+describe("cobas 4800 molecular oncology", () => {
+  const tpbInput: TpbTableInput = { floors: { "6800": 24, "5800": 6 }, values: [] };
+  const kit = (code: string, materialNo: string): AssayLite => ({ system: "4800", code, description: code, materialNo, batchRow: null, packSize: 24, price: 90000 });
+  const assays: AssayLite[] = [
+    kit("EGFR_PLASMA", "07248563190"), kit("EGFR_TISSUE", "07248563190"),
+    kit("KRASV2_PLASMA", "07989270001"), kit("KRASV2_TISSUE", "07989270001"),
+    kit("PIK3CA4800", "07003986190"),
+  ];
+  const w = (codes: string[], v: number) => Object.fromEntries(codes.map((c) => [c, v]));
+  const item = (materialNo: string, packSize: number, weights: Record<string, number>): ItemLite => ({
+    system: "4800", materialNo, description: materialNo, driver: "TEST", appliesTo: Object.keys(weights), weights,
+    consumption: 1, coverage: 1, packSize, price: 1000, onDemand: false, optional: false,
+  });
+  const items: ItemLite[] = [
+    item("05232724001", 50, w(["EGFR_PLASMA", "EGFR_TISSUE", "KRASV2_PLASMA", "KRASV2_TISSUE", "PIK3CA4800"], 8 / 24)), // AD-plate: 8 PC per box
+    item("07247737190", 24, w(["EGFR_PLASMA", "KRASV2_PLASMA"], 1)), // cfDNA sample prep: plasma
+    item("05985536190", 24, w(["EGFR_TISSUE", "KRASV2_TISSUE", "PIK3CA4800"], 1)), // DNA isolation: tissue
+  ];
+  const g = (o: Record<string, Partial<MaterialGiven>>) => new Map(Object.entries(o).map(([m, v]) => [m, given(v)]));
+  const expectedOf = (r: ReturnType<typeof computeEntitlement>, mat: string) => r.rows.find((x) => x.materialNo === mat)?.expected;
+
+  it("an oncology-only account is recognised as cobas 4800", () => {
+    expect(detectPlatform(g({ "07248563190": { sold: 3 } })).has4800).toBe(true);
+  });
+
+  it("one kit box earns one isolation kit and 8/50 of an AD-plate pack", () => {
+    const r = computeEntitlement(g({ "07248563190": { sold: 10 } }), assays, items, new Set(), tpbInput);
+    expect(expectedOf(r, "05232724001")).toBe(2); // 10 boxes x 8 PC = 80 PC -> 2 packs of 50
+    // Plasma or Tissue is unknown from sales: each isolation kit is credited up to the number of boxes.
+    expect(expectedOf(r, "07247737190")).toBe(10);
+    expect(expectedOf(r, "05985536190")).toBe(10);
+  });
+
+  it("tissue-only kits earn DNA isolation, not cfDNA sample prep", () => {
+    const r = computeEntitlement(g({ "07003986190": { sold: 4 } }), assays, items, new Set(), tpbInput);
+    expect(expectedOf(r, "05985536190")).toBe(4);
+    expect(expectedOf(r, "07247737190")).toBeUndefined();
+  });
+
+  it("boxes of different kits add up before rounding the AD-plate packs", () => {
+    const r = computeEntitlement(g({ "07248563190": { sold: 3 }, "07989270001": { sold: 3 }, "07003986190": { sold: 1 } }), assays, items, new Set(), tpbInput);
+    expect(expectedOf(r, "05232724001")).toBe(2); // 7 boxes x 8 = 56 PC -> 2 packs of 50 (one kit alone: 24 PC would be 1)
+  });
+
+  it("does not round up on floating-point noise (150 boxes x 8 PC = 1200 PC = exactly 24 packs)", () => {
+    const r = computeEntitlement(g({ "07248563190": { sold: 150 } }), assays, items, new Set(), tpbInput);
+    expect(expectedOf(r, "05232724001")).toBe(24);
+  });
+});

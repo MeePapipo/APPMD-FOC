@@ -38,7 +38,6 @@
 import type { AssayLite, ItemLite } from "@/lib/calc/types";
 import { groupsFor, runsForSystem } from "@/lib/calc/batches";
 import { unitsForItem } from "@/lib/calc/driver";
-import { unitsFor4800Item } from "@/lib/calc/engine4800";
 import { buildTpbTable, type TpbTableInput } from "@/lib/calc/tpb";
 import { ceil } from "@/lib/calc/round";
 
@@ -71,6 +70,12 @@ const MARKERS_4800: Record<string, string> = {
   "07865970190": "cobas 4800 CMV 120T",
   "06979564190": "cobas 4800 HBV 120T",
   "06979602190": "cobas 4800 HCV 120T",
+  // Molecular oncology kits (cobas 4800_Oncology tab of the master file).
+  "07659962001": "BRAF/NRAS Mutation Test",
+  "07248563190": "cobas EGFR AMP/DET V2",
+  "07989270001": "KRAS Mutation Test v2",
+  "07003986190": "cobas 4800 PIK3CA",
+  "05852170190": "cobas 4800 KRAS",
 };
 
 export type MaterialGiven = {
@@ -225,10 +230,28 @@ function evaluate4800(got: Map<string, MaterialGiven>, assays: AssayLite[], item
   const assayByMat = firstAssayByMaterial(assays, "4800");
   const tests = testsFromSelling(got, assayByMat);
 
+  // Several assay codes can share one material number (HPV and its SurePath twin; an oncology kit run on
+  // Plasma or on Tissue). The sales data only knows the material, so the variant actually run is unknown:
+  // per material, an item is credited at the variant that earns it most, never at the sum of the variants
+  // (the kit volume cannot be split). Items whose variants weigh the same are unaffected.
+  const variantsByMat = new Map<string, string[]>();
+  for (const a of assays) {
+    if (a.system !== "4800") continue;
+    variantsByMat.set(a.materialNo, [...(variantsByMat.get(a.materialNo) ?? []), a.code]);
+  }
+
   const expected: Record<string, number> = {};
   for (const item of items) {
     if (item.system !== "4800" || !item.weights) continue;
-    const units = unitsFor4800Item(item, tests); // deliberately not rounded before dividing by packSize
+    let units = 0;
+    if (item.onDemand) continue;
+    for (const [mat, a] of assayByMat) {
+      const matTests = tests[a.code] ?? 0;
+      if (matTests <= 0) continue;
+      const weights = item.weights as Record<string, number>;
+      units += matTests * Math.max(0, ...(variantsByMat.get(mat) ?? [a.code]).map((code) => weights[code] ?? 0));
+    }
+    units = Math.round(units * 1e9) / 1e9; // deliberately not rounded to a whole unit before dividing by packSize
     if (units <= 0) continue;
     const qty = item.packSize ? ceil(units / item.packSize) : 0;
     if (qty > 0) expected[item.materialNo] = (expected[item.materialNo] ?? 0) + qty;

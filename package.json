@@ -17,6 +17,7 @@
     "copy-reference-data": "tsx scripts/copy-reference-data.ts",
     "import-instrument-usage": "tsx scripts/import-instrument-usage.ts",
     "apply-migrations-neon": "tsx scripts/apply-migrations-neon.ts",
+    "add-oncology": "tsx scripts/add-oncology.ts",
     "verify-export": "tsx scripts/verify-export.mts",
     "smoke": "tsx scripts/smoke.mts",
     "db:dev": "node scripts/pg-dev.mjs",
