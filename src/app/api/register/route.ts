@@ -8,7 +8,7 @@ import { passwordSchema } from "@/lib/passwordPolicy";
 const registerSchema = z.object({
   name: z.string().trim().min(1).max(100),
   email: z.string().trim().min(3).max(254).email(),
-  team: z.enum(["NORTH", "SOUTH", "PRIVATE", "BUSINESS_PARTNER"]),
+  team: z.enum(["NORTH", "SOUTH", "PRIVATE", "BUSINESS_PARTNER", "THAI_RED_CROSS"]),
   password: passwordSchema,
 });
 

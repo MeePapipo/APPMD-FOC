@@ -7,6 +7,7 @@ const TEAM_LABELS: Record<string, string> = {
   SOUTH: "South Team",
   PRIVATE: "Private Team",
   BUSINESS_PARTNER: "Business Partner Team",
+  THAI_RED_CROSS: "Thai Red Cross Team",
   MD: "MD Team",
   UNASSIGNED: "Unassigned",
 };

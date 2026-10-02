@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 const patchSchema = z
   .object({
     role: z.enum(["USER", "ADMIN"]),
-    team: z.enum(["NORTH", "SOUTH", "PRIVATE", "BUSINESS_PARTNER", "MD"]).nullable(),
+    team: z.enum(["NORTH", "SOUTH", "PRIVATE", "BUSINESS_PARTNER", "THAI_RED_CROSS", "MD"]).nullable(),
     active: z.boolean(),
   })
   .partial()

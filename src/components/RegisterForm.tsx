@@ -12,6 +12,7 @@ const TEAM_OPTIONS = [
   { value: "SOUTH", label: "South Team" },
   { value: "PRIVATE", label: "Private Team" },
   { value: "BUSINESS_PARTNER", label: "Business Partner Team" },
+  { value: "THAI_RED_CROSS", label: "Thai Red Cross Team" },
 ] as const;
 
 export function RegisterForm() {

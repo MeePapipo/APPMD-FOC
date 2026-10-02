@@ -23,6 +23,7 @@ enum Team {
   SOUTH
   PRIVATE
   BUSINESS_PARTNER
+  THAI_RED_CROSS
   MD // internal MD team (the admin account); hidden from team rollups, not offered at registration
 }
 
