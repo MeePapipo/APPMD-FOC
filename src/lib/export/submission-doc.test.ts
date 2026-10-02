@@ -201,6 +201,15 @@ describe("loadSubmissionDoc contents", () => {
     expect(doc?.focItems[0]).toMatchObject({ afterStockQty: 5, overGiveQty: 2 });
   });
 
+  it("names the free boxes on the reagent line and keeps them out of the billed quantity", async () => {
+    mocks.findUnique.mockResolvedValue(submission({
+      reagents: [{ description: "KIT HBV", materialNo: "M1", dkshCode: null, tests: 384, qty: 2, lineValue: 400, freeQty: 1, freeTests: 192 }],
+    }));
+    const doc = await loadSubmissionDoc("sub-1", REP);
+    expect(doc?.reagents[0]).toMatchObject({ description: "KIT HBV — แถมฟรี 1 กล่อง", qty: 2, freeQty: 1, value: 400 });
+    expect(doc?.reagentTotal).toBe(400);
+  });
+
   it("labels the systems the order touched", async () => {
     mocks.findUnique.mockResolvedValue(submission({
       assayInputs: [

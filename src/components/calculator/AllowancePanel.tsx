@@ -23,11 +23,16 @@ export function AllowancePanel({ allowance, lines }: {
     .map((line) => {
       const a = allowance.lines[line.materialNo];
       const over = Math.max(0, line.finalQty - Math.max(a.remaining, 0));
-      return { line, ...a, over };
+      // Total past the quota once this order is counted; up to one per reagent bill is only a warning.
+      const pastQuota = a.given + line.finalQty - a.entitled;
+      const level: "over" | "warning" | "full" | "within" =
+        over > 0 ? (pastQuota > allowance.grace ? "over" : "warning") : line.finalQty > 0 && a.remaining === line.finalQty ? "full" : "within";
+      return { line, ...a, over, level };
     })
     .sort((x, y) => y.over - x.over || x.line.description.localeCompare(y.line.description));
   if (rows.length === 0) return null;
-  const overCount = rows.filter((r) => r.over > 0).length;
+  const overCount = rows.filter((r) => r.level === "over").length;
+  const warnCount = rows.filter((r) => r.level === "warning").length;
 
   return (
     <section aria-labelledby="allowance-heading" className="min-w-0">
@@ -39,8 +44,12 @@ export function AllowancePanel({ allowance, lines }: {
         The quota is what {allowance.year ? `${allowance.year}’s` : "that year’s"} reagent sales earn, and includes this order.
       </p>
       {overCount > 0 ? (
+        <p role="status" className="mt-2 rounded-lg bg-negative-tint px-3 py-2 text-sm text-negative">
+          {overCount} item{overCount === 1 ? "" : "s"} on this order would go well past the remaining allowance.
+        </p>
+      ) : warnCount > 0 ? (
         <p role="status" className="mt-2 rounded-lg bg-warning-tint px-3 py-2 text-sm text-warning">
-          {overCount} item{overCount === 1 ? "" : "s"} on this order would go past the remaining allowance.
+          {warnCount} item{warnCount === 1 ? "" : "s"} would go slightly past the allowance (within +1 per reagent bill, {n(allowance.grace)} bill{allowance.grace === 1 ? "" : "s"} this year).
         </p>
       ) : (
         <p role="status" className="mt-2 text-sm text-positive">Everything on this order is within the remaining allowance.</p>
@@ -58,7 +67,7 @@ export function AllowancePanel({ allowance, lines }: {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ line, given, entitled, remaining, over }) => (
+            {rows.map(({ line, given, entitled, remaining, over, level }) => (
               <tr key={line.materialNo} className={cn("border-b border-line/60", ROW_HOVER)}>
                 <td className="py-2 pr-3 text-ink">{line.description}</td>
                 <td className="py-2 pr-3 text-right text-muted">{n(given)}</td>
@@ -66,7 +75,10 @@ export function AllowancePanel({ allowance, lines }: {
                 <td className={cn("py-2 pr-3 text-right font-medium", remaining < 0 ? "text-negative" : "text-ink")}>{n(remaining)}</td>
                 <td className="py-2 pr-3 text-right font-medium text-ink">{n(line.finalQty)}</td>
                 <td className="py-2 text-right">
-                  {over > 0 ? <Badge tone="negative">Over by {n(over)}</Badge> : <Badge tone="positive">Within</Badge>}
+                  {level === "over" && <Badge tone="negative">Over by {n(over)}</Badge>}
+                  {level === "warning" && <Badge tone="warning">Over by {n(over)} (warning)</Badge>}
+                  {level === "full" && <Badge tone="positive">Fully used</Badge>}
+                  {level === "within" && <Badge tone="positive">Within</Badge>}
                 </td>
               </tr>
             ))}

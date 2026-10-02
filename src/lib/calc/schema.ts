@@ -60,6 +60,8 @@ export const calculateSchema = z.object({
   /** With an account the run counts use that account's own TPB; without one, the national TPB. */
   accountId: z.string().min(1).max(64).optional(),
   testsBySys: testsBySysSchema,
+  /** Main reagent given free with the order, same shape as `testsBySys`. */
+  freeTestsBySys: testsBySysSchema.optional(),
   optionalTicked: optionalTickedSchema.optional(),
 });
 
@@ -77,6 +79,7 @@ export const additionalFocSchema = z
 export const createSubmissionSchema = z.object({
   accountId: z.string().min(1).max(64),
   testsBySys: testsBySysSchema,
+  freeTestsBySys: testsBySysSchema.optional(),
   optionalTicked: optionalTickedSchema.optional(),
   adjustments: adjustmentsSchema.optional(),
   additionalFoc: additionalFocSchema.optional(),

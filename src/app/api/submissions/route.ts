@@ -20,19 +20,19 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json({ error: "Invalid request", details: parsed.error.issues }, { status: 400 });
   }
-  const { accountId, testsBySys, optionalTicked, adjustments = {}, additionalFoc = {} } = parsed.data;
+  const { accountId, testsBySys, freeTestsBySys = {}, optionalTicked, adjustments = {}, additionalFoc = {} } = parsed.data;
 
   const account = await prisma.account.findUnique({ where: { id: accountId } });
   if (!account) return Response.json({ error: "Account not found" }, { status: 404 });
 
-  const hasAnyTests = Object.values(testsBySys).some(
-    (v) => v && Object.values(v).some((n) => n > 0),
+  const hasAnyTests = [testsBySys, freeTestsBySys].some((by) =>
+    Object.values(by).some((v) => v && Object.values(v).some((n) => n > 0)),
   );
   if (!hasAnyTests) return Response.json({ error: "No test volumes entered" }, { status: 400 });
 
   let computed;
   try {
-    computed = await computeForTests(testsBySys, { optionalTicked }, account.id);
+    computed = await computeForTests(testsBySys, { optionalTicked, freeTestsBySys }, account.id);
   } catch (cause) {
     console.error("submission compute failed", cause);
     return Response.json({ error: "Calculation failed. Please try again." }, { status: 500 });
@@ -149,12 +149,13 @@ export async function POST(request: Request) {
       focValue,
       focPct: revenue ? focValue / revenue : 0,
       assayInputs: {
-        create: (Object.entries(testsBySys) as [SysCode, Record<string, number> | undefined][]).flatMap(
-          ([sys, tests]) =>
-            Object.entries(tests ?? {})
-              .filter(([, n]) => n > 0)
-              .map(([code, n]) => ({ system: SYS_ENUM[sys], assayCode: code, tests: n })),
-        ),
+        create: (["6800", "5800", "4800"] as SysCode[]).flatMap((sys) => {
+          const paid = testsBySys[sys] ?? {};
+          const free = freeTestsBySys[sys] ?? {};
+          return [...new Set([...Object.keys(paid), ...Object.keys(free)])]
+            .filter((code) => (paid[code] ?? 0) > 0 || (free[code] ?? 0) > 0)
+            .map((code) => ({ system: SYS_ENUM[sys], assayCode: code, tests: paid[code] ?? 0, freeTests: free[code] ?? 0 }));
+        }),
       },
       reagents: {
         create: result.reagents.map((reagent) => ({
@@ -168,6 +169,8 @@ export async function POST(request: Request) {
           qty: reagent.qty,
           unitPrice: reagent.unitPrice,
           lineValue: reagent.value,
+          freeQty: reagent.freeQty,
+          freeTests: reagent.freeTests,
         })),
       },
       lines: { create: allLines },

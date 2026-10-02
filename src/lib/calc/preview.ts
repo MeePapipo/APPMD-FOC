@@ -26,7 +26,21 @@ export interface AllowanceInfo {
   asOf: string | null; // "2026-08", the latest month in the FOC import
   year: number | null; // the calendar year the allowance covers: the latest year in the import
   hasHistory: boolean; // false when the account has no rows in the import at all
+  /** Reagent bills in the year (this order counts as one): going over quota by up to this many is only a warning. */
+  grace: number;
   lines: Record<string, { given: number; entitled: number; remaining: number }>;
+}
+
+export interface TpbUsed {
+  system: "6800" | "5800";
+  code: string;
+  tpb: number;
+  source: "national" | "account" | "floor-clamped" | "floor-default";
+  /** The account's own figure and the runs behind it, when it has one (it may be too thin to be used). */
+  own: number | null;
+  ownRuns: number | null;
+  /** Runs this order needs on the instrument. */
+  runs: number | null;
 }
 
 export interface PreviewResult {
@@ -37,6 +51,8 @@ export interface PreviewResult {
   focPct: number;
   /** Assays whose run count rests on weak TPB evidence; absent on older saved previews. */
   tpbNotices?: TpbNotice[];
+  /** Samples per run (TPB) each ordered assay was computed with, and the runs that gave; absent on older saved previews. */
+  tpbUsed?: TpbUsed[];
   /** Present when the order was previewed for an account. */
   allowance?: AllowanceInfo | null;
 }

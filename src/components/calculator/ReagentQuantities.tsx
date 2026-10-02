@@ -11,6 +11,7 @@ export function ReagentQuantities({ reagents }: { reagents: ReagentResult[] }) {
   const tests = reagents.reduce((total, reagent) => total + reagent.tests, 0);
   const boxes = reagents.reduce((total, reagent) => total + reagent.qty, 0);
   const revenue = reagents.reduce((total, reagent) => total + reagent.value, 0);
+  const freeBoxes = reagents.reduce((total, reagent) => total + reagent.freeQty, 0);
 
   return (
     <CategorySection category="reagent" title="Order quantities" className="mt-5">
@@ -25,6 +26,7 @@ export function ReagentQuantities({ reagents }: { reagents: ReagentResult[] }) {
               <dl className="shrink-0 text-right">
                 <dt className="text-xs text-muted">Quantity</dt>
                 <dd className="text-sm font-semibold text-brand">{number(reagent.qty)} boxes</dd>
+                {reagent.freeQty > 0 && <dd className="text-xs font-medium text-muted">+ {number(reagent.freeQty)} free</dd>}
               </dl>
             </div>
             <p className="mt-2 break-words text-xs text-muted">{reagent.description}</p>
@@ -44,6 +46,7 @@ export function ReagentQuantities({ reagents }: { reagents: ReagentResult[] }) {
         ))}
         <dl className="grid grid-cols-2 gap-2 py-3 text-sm font-semibold tabular-nums">
           <dt>Total quantity</dt><dd className="text-right">{number(boxes)} boxes</dd>
+          {freeBoxes > 0 && (<><dt>Free boxes</dt><dd className="text-right">{number(freeBoxes)} boxes</dd></>)}
           <dt>Total (THB)</dt><dd className="text-right">{number(revenue)}</dd>
         </dl>
       </div>
@@ -57,6 +60,7 @@ export function ReagentQuantities({ reagents }: { reagents: ReagentResult[] }) {
               <th scope="col" className="px-3 py-3 text-right">Tests/box</th>
               <th scope="col" className="px-3 py-3 text-right">Value (THB)</th>
               <th scope="col" className="px-3 py-3 text-right">Quantity (boxes)</th>
+              <th scope="col" className="px-3 py-3 text-right">Free (boxes)</th>
             </tr>
           </thead>
           <tbody>
@@ -73,6 +77,7 @@ export function ReagentQuantities({ reagents }: { reagents: ReagentResult[] }) {
                 <td className="px-3 py-3 text-right">{number(reagent.packSize)}</td>
                 <td className="px-3 py-3 text-right">{reagent.unitPrice === null ? "Price unavailable" : number(reagent.value)}</td>
                 <td className="px-3 py-3 text-right font-semibold text-brand"><output aria-label={`Quantity ${reagent.code}`}>{number(reagent.qty)}</output></td>
+                <td className="px-3 py-3 text-right text-muted">{reagent.freeQty > 0 ? number(reagent.freeQty) : "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -84,6 +89,7 @@ export function ReagentQuantities({ reagents }: { reagents: ReagentResult[] }) {
               <td />
               <td className="px-3 py-3 text-right">{number(revenue)}</td>
               <td className="px-3 py-3 text-right">{number(boxes)}</td>
+              <td className="px-3 py-3 text-right">{freeBoxes > 0 ? number(freeBoxes) : "—"}</td>
             </tr>
           </tfoot>
         </table>

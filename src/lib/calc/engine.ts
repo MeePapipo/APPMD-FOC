@@ -1,4 +1,4 @@
-import type { AssayLite, BatchSysCode, ComputeOptions, ComputeResult, ItemLite, SysCode, TestsBySystem } from "./types";
+import { mergeTests, type AssayLite, type BatchSysCode, type ComputeOptions, type ComputeResult, type ItemLite, type SysCode, type TestsBySystem } from "./types";
 import { buildTpbTable, type TpbTableInput } from "./tpb";
 import { groupsFor, runsForSystem } from "./batches";
 import { unitsForItem } from "./driver";
@@ -24,10 +24,12 @@ const BATCH_SYSTEMS: BatchSysCode[] = ["6800", "5800"];
 export function computeSubmission(
   items: ItemLite[],
   assays: AssayLite[],
-  testsBySys: TestsBySystem,
+  paidTestsBySys: TestsBySystem,
   tpbInput: TpbTableInput,
   opts: ComputeOptions = {},
 ): ComputeResult {
+  // The supporting items follow every test run on the instrument, paid or free; revenue is paid tests only.
+  const testsBySys = mergeTests(paidTestsBySys, opts.freeTestsBySys);
   const tpbTable = buildTpbTable(tpbInput);
   const optionalTicked = opts.optionalTicked ?? {};
 
@@ -77,7 +79,7 @@ export function computeSubmission(
   // before rounding, same as SKU combining above. cobas 4800 uses entirely
   // distinct kits/codes (never shares a code string with 6800/5800), so its
   // revenue is simply additive.
-  const reagents = computeReagents(assays, testsBySys);
+  const reagents = computeReagents(assays, paidTestsBySys, opts.freeTestsBySys);
   const revenue = reagents.reduce((sum, reagent) => sum + reagent.value, 0);
 
   const focValue = rows.reduce((sum, r) => sum + r.value, 0);

@@ -342,6 +342,9 @@ model SubmissionAssayInput {
   system       System
   assayCode    String
   tests        Int
+  /// Tests of main reagent given free (FOC / Bonus) with this order: run on the instrument, so they earn
+  /// the same supporting items, but they are not revenue.
+  freeTests    Int        @default(0)
 
   @@index([submissionId])
 }
@@ -365,6 +368,9 @@ model SubmissionReagent {
   qty          Float // boxes, rounded up once across systems
   unitPrice    Float?
   lineValue    Decimal    @db.Decimal(14, 2)
+  /// Boxes (and their tests) of this kit given free with the order; not part of qty or lineValue.
+  freeQty      Float      @default(0)
+  freeTests    Int        @default(0)
 
   @@index([submissionId])
 }

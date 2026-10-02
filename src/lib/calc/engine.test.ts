@@ -120,3 +120,34 @@ describe("unitsFor4800Item — hand-derived cases (weights are ground truth, see
     expect(result.revenue).toBe(1 * (assay.price ?? 0));
   });
 });
+
+describe("computeSubmission — main reagent given free", () => {
+  it("works the supporting items out on paid + free tests, but bills only the paid boxes", () => {
+    const paidOnly = computeSubmission(items, assays, { "6800": { HBV: 1920 } }, tpbInput);
+    const together = computeSubmission(items, assays, { "6800": { HBV: 1920 } }, tpbInput, { freeTestsBySys: { "6800": { HBV: 1920 } } });
+    const allPaid = computeSubmission(items, assays, { "6800": { HBV: 3840 } }, tpbInput);
+
+    // Same supporting items as if all 3840 tests were bought...
+    expect(together.rows.map((r) => r.qty)).toEqual(allPaid.rows.map((r) => r.qty));
+    expect(together.focValue).toBeGreaterThan(paidOnly.focValue);
+    // ...but revenue is the paid boxes only, and the free boxes are reported on their own.
+    expect(together.revenue).toBe(paidOnly.revenue);
+    expect(together.reagents.find((r) => r.code === "HBV")).toMatchObject({ tests: 1920, qty: 10, freeTests: 1920, freeQty: 10 });
+  });
+
+  it("lists a reagent that is only given free (no paid boxes) without billing it", () => {
+    const result = computeSubmission(items, assays, {}, tpbInput, { freeTestsBySys: { "6800": { HBV: 192 } } });
+    expect(result.reagents.find((r) => r.code === "HBV")).toMatchObject({ tests: 0, qty: 0, value: 0, freeTests: 192, freeQty: 1 });
+    expect(result.revenue).toBe(0);
+  });
+});
+
+describe("computeSubmission — free reagent of another assay", () => {
+  it("a free box of a different assay earns that assay's supporting items, not the purchased one's", () => {
+    const hivPaidHcvFree = computeSubmission(items, assays, { "6800": { HIVQ: 1920 } }, tpbInput, { freeTestsBySys: { "6800": { HCV: 1920 } } });
+    const bothPaid = computeSubmission(items, assays, { "6800": { HIVQ: 1920, HCV: 1920 } }, tpbInput);
+    expect(hivPaidHcvFree.rows.map((r) => r.qty)).toEqual(bothPaid.rows.map((r) => r.qty));
+    expect(hivPaidHcvFree.reagents.find((r) => r.code === "HCV")).toMatchObject({ qty: 0, freeQty: 10, value: 0 });
+    expect(hivPaidHcvFree.revenue).toBe(computeSubmission(items, assays, { "6800": { HIVQ: 1920 } }, tpbInput).revenue);
+  });
+});

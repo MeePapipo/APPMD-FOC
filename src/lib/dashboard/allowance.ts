@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { AllowanceInfo } from "@/lib/calc/preview";
 import type { AssayLite, ItemLite } from "@/lib/calc/types";
 import type { TpbTableInput } from "@/lib/calc/tpb";
-import { buildGot } from "./accountGiven";
+import { buildGot, reagentBillMonths } from "./accountGiven";
 import { computeEntitlement } from "./entitlement";
 import { loadAlertThresholds } from "./alertSettings";
 import { LEGACY_PRODUCT } from "./importSettings";
@@ -19,7 +19,7 @@ import { LEGACY_PRODUCT } from "./importSettings";
  */
 export async function loadAllowance(args: {
   accountNumber: string;
-  reagents: { materialNo: string; description: string; qty: number }[];
+  reagents: { materialNo: string; description: string; qty: number; freeQty?: number }[];
   assays: AssayLite[];
   items: ItemLite[];
   tpbInput: TpbTableInput;
@@ -40,12 +40,16 @@ export async function loadAllowance(args: {
   // quota that year's reagent sales (plus this order) earn. Earlier years are closed and not counted.
   const rows = latest ? fetched.filter((r) => r.year === latest.year) : fetched;
   const got = buildGot(rows);
-  // This order is not in Tableau yet: add its reagent packs as if already sold.
+  // This order is not in Tableau yet: add its reagent packs as if already sold, and the boxes given free with it
+  // as FOC (run on the instrument, so they earn the same supporting items).
   for (const r of reagents) {
     const d = got.get(r.materialNo) ?? { sold: 0, foc: 0, bonus: 0, freeCost: 0, productName: r.description };
     d.sold += r.qty;
+    d.foc += r.freeQty ?? 0;
     got.set(r.materialNo, d);
   }
+  // This order is one more bill; each bill allows +1 of an item before it is more than a warning.
+  const grace = reagentBillMonths(rows) + (reagents.some((r) => r.qty > 0) ? 1 : 0);
 
   const { rows: entitlementRows } = computeEntitlement(got, assays, items, new Set(additional.map((a) => a.materialNo)), tpbInput, alert);
   const lines: AllowanceInfo["lines"] = {};
@@ -57,6 +61,7 @@ export async function loadAllowance(args: {
     asOf: latest ? `${latest.year}-${String(latest.month).padStart(2, "0")}` : null,
     year: latest?.year ?? null,
     hasHistory: rows.length > 0,
+    grace,
     lines,
   };
 }

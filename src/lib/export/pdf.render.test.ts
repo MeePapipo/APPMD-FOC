@@ -21,8 +21,8 @@ const doc: SubmissionDoc = {
   systemsLabel: "cobas 6800/8800 + cobas 5800",
   assayInputs: [],
   reagents: [
-    { description: "KIT COBAS 58/68/8800 HBV 192T IVD", materialNo: "09040820190", dkshCode: "101154999", tests: 2500, qty: 14, value: 2284800 },
-    { description: "KIT COBAS 58/68/8800 HCV 192T IVD", materialNo: "09040765190", dkshCode: "101154997", tests: 800, qty: 5, value: 960000 },
+    { description: "KIT COBAS 58/68/8800 HBV 192T IVD", materialNo: "09040820190", dkshCode: "101154999", tests: 2500, qty: 14, freeQty: 0, value: 2284800 },
+    { description: "KIT COBAS 58/68/8800 HCV 192T IVD", materialNo: "09040765190", dkshCode: "101154997", tests: 800, qty: 5, freeQty: 0, value: 960000 },
   ],
   reagentTotal: 3244800,
   focItems: [

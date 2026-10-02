@@ -45,9 +45,26 @@ export interface ItemLite {
 export type TestVector = Record<string, number>;
 export type TestsBySystem = Partial<Record<SysCode, TestVector>>;
 
+/** Paid + free test volumes, per system and assay code. */
+export function mergeTests(paid: TestsBySystem, free: TestsBySystem | undefined): TestsBySystem {
+  if (!free) return paid;
+  const out: TestsBySystem = {};
+  for (const sys of ["6800", "5800", "4800"] as const) {
+    const vector: TestVector = { ...(paid[sys] ?? {}) };
+    for (const [code, n] of Object.entries(free[sys] ?? {})) vector[code] = (vector[code] ?? 0) + n;
+    if (Object.keys(vector).length > 0) out[sys] = vector;
+  }
+  return out;
+}
+
 export interface ComputeOptions {
   /** materialNo -> ticked, for optional items. Missing/false = not ticked (excluded from value). */
   optionalTicked?: Record<string, boolean>;
+  /**
+   * Main reagent given free with the order (compensation, "buy 10 get 1", method verification). It is run on the
+   * instrument like any other, so the supporting items are worked out on paid + free tests; revenue is paid only.
+   */
+  freeTestsBySys?: TestsBySystem;
 }
 
 export interface RowResult {
@@ -86,7 +103,12 @@ export interface ReagentResult {
   systems: SysCode[];
   tests: number;
   packSize: number;
+  /** Paid boxes: what the order is billed on. */
   qty: number;
   unitPrice: number | null;
+  /** Paid boxes x price (free boxes are not revenue). */
   value: number;
+  /** Boxes (and their tests) of this kit given free with the order. */
+  freeTests: number;
+  freeQty: number;
 }

@@ -47,6 +47,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
               <li key={`${a.system}-${a.assayCode}`} className="text-muted">
                 <span className="text-ink">{a.assayCode}</span> ({SYSTEM_SHORT_LABELS[a.system]}):{" "}
                 {a.tests.toLocaleString()}
+                {a.freeTests > 0 && <span> + {a.freeTests.toLocaleString()} free</span>}
               </li>
             ))}
           </ul>

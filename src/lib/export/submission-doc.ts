@@ -97,7 +97,10 @@ export interface ReagentRow {
   materialNo: string;
   dkshCode: string | null;
   tests: number;
+  /** Paid boxes (what the order bills). */
   qty: number;
+  /** Boxes of the same kit given free with the order; already named in `description`. */
+  freeQty: number;
   value: number;
 }
 
@@ -153,7 +156,7 @@ export interface SubmissionDoc {
   createdAt: Date;
   status: "SUBMITTED" | "VOID";
   systemsLabel: string;
-  assayInputs: { system: System; assayCode: string; tests: number }[];
+  assayInputs: { system: System; assayCode: string; tests: number; freeTests: number }[];
   reagents: ReagentRow[];
   reagentTotal: number;
   /** Driver-calculated give-aways. */
@@ -227,11 +230,13 @@ export async function loadSubmissionDoc(
   const additionalByMaterial = new Map(additionalItems.map((item) => [item.materialNo, item]));
 
   const reagents: ReagentRow[] = submission.reagents.map((reagent) => ({
-    description: reagent.description,
+    // Free boxes are named on the line itself so the PDF, the XLSX and the history page all say it.
+    description: reagent.freeQty > 0 ? `${reagent.description} — แถมฟรี ${reagent.freeQty} กล่อง` : reagent.description,
     materialNo: reagent.materialNo,
     dkshCode: reagent.dkshCode,
     tests: reagent.tests,
     qty: reagent.qty,
+    freeQty: reagent.freeQty,
     value: Number(reagent.lineValue),
   }));
 
@@ -293,6 +298,7 @@ export async function loadSubmissionDoc(
       system: a.system,
       assayCode: a.assayCode,
       tests: a.tests,
+      freeTests: a.freeTests,
     })),
     reagents,
     reagentTotal: reagents.reduce((sum, r) => sum + r.value, 0),

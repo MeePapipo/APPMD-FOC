@@ -27,6 +27,9 @@ interface AssayLine {
   system: SysCode;
   code: string;
   boxes: string;
+  /** Boxes of the same reagent given free (FOC / Bonus); "" = none. */
+  free: string;
+  freeOpen: boolean;
 }
 
 export function Calculator({ accounts, assays, additionalFoc }: {
@@ -36,7 +39,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 }) {
   const router = useRouter();
   const [account, setAccount] = useState<AccountDTO | null>(null);
-  const [lines, setLines] = useState<AssayLine[]>([{ id: 0, system: "6800", code: "", boxes: "" }]);
+  const [lines, setLines] = useState<AssayLine[]>([{ id: 0, system: "6800", code: "", boxes: "", free: "", freeOpen: false }]);
   const nextLineId = useRef(1);
   const requestInFlight = useRef(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -61,19 +64,30 @@ export function Calculator({ accounts, assays, additionalFoc }: {
   const assayOf = (line: AssayLine) =>
     assays.find((assay) => assay.system === line.system && assay.code === line.code);
   const testsOf = (line: AssayLine) => Number(line.boxes) * (assayOf(line)?.packSize ?? 0);
-  const selectedLines = lines.filter((line) => line.code || line.boxes);
+  const freeTestsOf = (line: AssayLine) => Number(line.free) * (assayOf(line)?.packSize ?? 0);
+  const selectedLines = lines.filter((line) => line.code || line.boxes || line.free);
+  // Paid boxes and/or free boxes: a line given only free boxes (a breakdown compensation) is a valid order.
   const validLine = (line: AssayLine) =>
     !!assayOf(line) &&
-    Number.isSafeInteger(Number(line.boxes)) && Number(line.boxes) > 0 &&
-    Number.isSafeInteger(testsOf(line));
+    Number.isSafeInteger(Number(line.boxes)) && Number(line.boxes) >= 0 &&
+    Number.isSafeInteger(Number(line.free)) && Number(line.free) >= 0 &&
+    Number(line.boxes) + Number(line.free) > 0 &&
+    Number.isSafeInteger(testsOf(line)) && Number.isSafeInteger(freeTestsOf(line));
   const testsBySys: TestsBySystem = {};
+  const freeTestsBySys: TestsBySystem = {};
   for (const line of selectedLines.filter(validLine)) {
-    const tests = testsBySys[line.system] ??= {};
-    tests[line.code] = (tests[line.code] ?? 0) + testsOf(line);
+    if (testsOf(line) > 0) {
+      const tests = testsBySys[line.system] ??= {};
+      tests[line.code] = (tests[line.code] ?? 0) + testsOf(line);
+    }
+    if (freeTestsOf(line) > 0) {
+      const tests = freeTestsBySys[line.system] ??= {};
+      tests[line.code] = (tests[line.code] ?? 0) + freeTestsOf(line);
+    }
   }
   const validOrder = selectedLines.length > 0 && selectedLines.every(validLine) &&
-    Object.values(testsBySys).every((tests) => Object.values(tests ?? {}).every(Number.isSafeInteger));
-  const reagents = computeReagents(assays, testsBySys);
+    [testsBySys, freeTestsBySys].every((by) => Object.values(by).every((tests) => Object.values(tests ?? {}).every(Number.isSafeInteger)));
+  const reagents = computeReagents(assays, testsBySys, freeTestsBySys);
 
   // Only lines actually in the current preview can block the order — leftover
   // adjustments for reagents the rep has since removed must not wedge it.
@@ -109,7 +123,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
     if (requestInFlight.current || busy) return;
     if (hasInput && !window.confirm("Clear the account and everything entered on this order, and start again?")) return;
     setAccount(null);
-    setLines([{ id: nextLineId.current++, system: "6800", code: "", boxes: "" }]);
+    setLines([{ id: nextLineId.current++, system: "6800", code: "", boxes: "", free: "", freeOpen: false }]);
     setPreview(null);
     setStale(false);
     setOptionalTicked({});
@@ -148,12 +162,12 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 
   function addLine() {
     if (requestInFlight.current) return;
-    const line: AssayLine = { id: nextLineId.current++, system: lines.at(-1)?.system ?? "6800", code: "", boxes: "" };
+    const line: AssayLine = { id: nextLineId.current++, system: lines.at(-1)?.system ?? "6800", code: "", boxes: "", free: "", freeOpen: false };
     setLines((previous) => [...previous, line]);
     invalidatePreview();
   }
 
-  function updateLine(id: number, update: Partial<Pick<AssayLine, "system" | "code" | "boxes">>) {
+  function updateLine(id: number, update: Partial<Pick<AssayLine, "system" | "code" | "boxes" | "free" | "freeOpen">>) {
     if (requestInFlight.current) return;
     setLines((previous) => previous.map((line) => line.id === id ? { ...line, ...update } : line));
     invalidatePreview();
@@ -179,7 +193,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
       const response = await fetch("/api/calculate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: account.id, testsBySys, optionalTicked }),
+        body: JSON.stringify({ accountId: account.id, testsBySys, freeTestsBySys, optionalTicked }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -207,6 +221,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
         body: JSON.stringify({
           accountId: account.id,
           testsBySys,
+          freeTestsBySys,
           optionalTicked,
           adjustments,
           // Quantities only — the server re-prices from the catalogue.
@@ -265,7 +280,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                         <select
                           id={`system-${line.id}`}
                           value={line.system}
-                          onChange={(event) => updateLine(line.id, { system: event.target.value as SysCode, code: "", boxes: "" })}
+                          onChange={(event) => updateLine(line.id, { system: event.target.value as SysCode, code: "", boxes: "", free: "", freeOpen: false })}
                           className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:outline-brand"
                         >
                           {(Object.keys(SYSTEM_LABELS) as SysCode[]).map((system) => (
@@ -279,7 +294,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                           id={`assay-${line.id}`}
                           value={line.code}
                           required={!!line.boxes}
-                          onChange={(event) => updateLine(line.id, { code: event.target.value, boxes: "" })}
+                          onChange={(event) => updateLine(line.id, { code: event.target.value, boxes: "", free: "", freeOpen: false })}
                           className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:outline-brand"
                         >
                           <option value="">Select reagent...</option>
@@ -294,10 +309,10 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                         <input
                           id={`boxes-${line.id}`}
                           type="number"
-                          min={1}
+                          min={Number(line.free) > 0 ? 0 : 1}
                           max={Number.MAX_SAFE_INTEGER}
                           step={1}
-                          required={!!line.code}
+                          required={!!line.code && !(Number(line.free) > 0)}
                           disabled={!line.code}
                           value={line.boxes}
                           onChange={(event) => updateLine(line.id, { boxes: event.target.value })}
@@ -309,6 +324,38 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                           </p>
                         )}
                       </div>
+                      {assay && (
+                        <div className="min-w-0 md:col-span-3">
+                          {line.freeOpen || line.free ? (
+                            <div className="flex flex-wrap items-end gap-3">
+                              <div className="w-40 max-w-full">
+                                <label htmlFor={`free-${line.id}`} className="mb-1 block text-xs font-medium text-muted">Free boxes (FOC / Bonus)</label>
+                                <input
+                                  id={`free-${line.id}`}
+                                  type="number"
+                                  min={0}
+                                  max={Number.MAX_SAFE_INTEGER}
+                                  step={1}
+                                  value={line.free}
+                                  onChange={(event) => updateLine(line.id, { free: event.target.value })}
+                                  className="no-spin w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm tabular-nums focus:outline-brand"
+                                />
+                              </div>
+                              <p className="min-w-0 flex-1 text-xs text-muted">
+                                Main reagent given free (compensation, buy 10 get 1, method verification). It is run on the instrument, so the supporting items below are worked out on paid + free boxes; the free boxes are not billed.
+                              </p>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => updateLine(line.id, { freeOpen: true })}
+                              className="text-xs font-medium text-brand hover:underline"
+                            >
+                              + Free boxes of this reagent
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -352,6 +399,28 @@ export function Calculator({ accounts, assays, additionalFoc }: {
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 {accountNotices.map((notice) => (
                   <li key={`${notice.system}-${notice.code}`}>{notice.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!stale && (preview.tpbUsed?.length ?? 0) > 0 && (
+            <div className="mb-4 rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-muted">
+              <p className="font-medium text-ink">Samples per run used for the batch items</p>
+              <ul className="mt-1 space-y-0.5 tabular-nums">
+                {preview.tpbUsed!.map((t) => (
+                  <li key={`${t.system}-${t.code}`}>
+                    <span className="text-ink">{t.code}</span> ({t.system === "6800" ? "6800/8800" : t.system}): {t.tpb} per run
+                    {t.runs !== null && <> → {t.runs} run{t.runs === 1 ? "" : "s"}</>} ·{" "}
+                    {t.source === "account"
+                      ? "this account's own figure"
+                      : t.source === "floor-clamped"
+                        ? "the floor (the account's own figure is too low)"
+                        : t.source === "floor-default"
+                          ? "default floor (no usage data)"
+                          : t.own !== null
+                            ? `national average (this account's own ${t.own}${t.ownRuns ? ` rests on only ${t.ownRuns} runs` : ""} is too thin to use)`
+                            : "national average"}
+                  </li>
                 ))}
               </ul>
             </div>

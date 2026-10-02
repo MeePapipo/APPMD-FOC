@@ -20,14 +20,14 @@ export async function POST(request: Request) {
   try {
     computed = await computeForTests(
       parsed.data.testsBySys,
-      { optionalTicked: parsed.data.optionalTicked },
+      { optionalTicked: parsed.data.optionalTicked, freeTestsBySys: parsed.data.freeTestsBySys },
       parsed.data.accountId,
     );
   } catch (cause) {
     console.error("calculate failed", cause);
     return Response.json({ error: "Calculation failed. Please try again." }, { status: 500 });
   }
-  const { result, items, assays, tpbInput, tpbNotices } = computed;
+  const { result, items, assays, tpbInput, tpbNotices, tpbBasis } = computed;
 
   // Remaining give-away allowance for the chosen account. A failure here must not
   // take the calculation down with it: the order is still quotable without it.
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       if (account) {
         allowance = await loadAllowance({
           accountNumber: account.accountNumber,
-          reagents: result.reagents.map((r) => ({ materialNo: r.materialNo, description: r.description, qty: r.qty })),
+          reagents: result.reagents.map((r) => ({ materialNo: r.materialNo, description: r.description, qty: r.qty, freeQty: r.freeQty })),
           assays,
           items,
           tpbInput,
@@ -67,7 +67,22 @@ export async function POST(request: Request) {
       value: row.value,
     }));
 
+  // Samples per run used for each ordered assay, with the runs it gave (the batch row's run count).
+  const tpbUsed = (tpbBasis ?? []).map((b) => {
+    const batchRow = assays.find((a) => a.system === b.system && a.code === b.code)?.batchRow ?? null;
+    return {
+      system: b.system,
+      code: b.code,
+      tpb: b.tpb,
+      source: b.source === "account" || b.source === "floor-clamped" || b.source === "floor-default" ? b.source : "national",
+      own: b.own,
+      ownRuns: b.runs,
+      runs: batchRow === null ? null : result.runs[b.system].get(batchRow) ?? null,
+    };
+  });
+
   return Response.json({
+    tpbUsed,
     reagents: result.reagents,
     lines,
     revenue: result.revenue,

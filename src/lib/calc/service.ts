@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { System } from "@prisma/client";
 import { computeSubmission } from "./engine";
-import type { AssayLite, ItemLite, TestsBySystem, SysCode, ComputeOptions } from "./types";
+import { mergeTests, type AssayLite, type ItemLite, type TestsBySystem, type SysCode, type ComputeOptions } from "./types";
 import type { TpbTableInput } from "./tpb";
 import { tpbNotices, type TpbMeta } from "./tpbNotices";
 import { basisForOrder, resolveAccountTpb, sumOwn, type TpbDetail, type UsageRow } from "./accountTpb";
@@ -142,6 +142,8 @@ export async function loadEngineData(accountId?: string): Promise<{
 export async function computeForTests(testsBySys: TestsBySystem, opts: ComputeOptions = {}, accountId?: string) {
   const { assays, items, tpbInput, tpbMeta, tpbDetail } = await loadEngineData(accountId);
   const result = computeSubmission(items, assays, testsBySys, tpbInput, opts);
+  // Run estimates and the TPB basis describe what the instrument runs, free reagent included.
+  testsBySys = mergeTests(testsBySys, opts.freeTestsBySys);
   return {
     result,
     items,
@@ -150,5 +152,6 @@ export async function computeForTests(testsBySys: TestsBySystem, opts: ComputeOp
     tpbNotices: tpbNotices(tpbMeta, tpbInput.floors, testsBySys, tpbDetail),
     // What each ordered assay was computed with — stored on the submission.
     tpbBasis: tpbDetail ? basisForOrder(tpbDetail, testsBySys, tpbInput.floors) : null,
+    tpbFloors: tpbInput.floors,
   };
 }
