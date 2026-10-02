@@ -120,24 +120,24 @@ export function detectPlatform(got: Map<string, MaterialGiven>): PlatformResult 
     if (nm6 >= nm5 * 2) {
       platform = "6800";
       candidates = ["6800"];
-      basis = `พบ ${named("6800", present6800)} (${nm6} ชนิด) · มีของรุ่น 5800 ปนมา ${nm5} ชนิด (${named("5800", present5800)}) — น่าจะส่งผิดรุ่น`;
+      basis = `Found ${named("6800", present6800)} (${nm6} types) · ${nm5} type(s) of 5800 items mixed in (${named("5800", present5800)}) — probably shipped for the wrong model`;
     } else if (nm5 >= nm6 * 2) {
       platform = "5800";
       candidates = ["5800"];
-      basis = `พบ ${named("5800", present5800)} (${nm5} ชนิด) · มีของรุ่น 6800 ปนมา ${nm6} ชนิด (${named("6800", present6800)}) — น่าจะส่งผิดรุ่น`;
+      basis = `Found ${named("5800", present5800)} (${nm5} types) · ${nm6} type(s) of 6800 items mixed in (${named("6800", present6800)}) — probably shipped for the wrong model`;
     } else {
       platform = "both";
       candidates = ["6800", "5800"];
-      basis = "พบ consumable เฉพาะของทั้งสองรุ่นในสัดส่วนใกล้เคียงกัน";
+      basis = "Model-specific consumables of both models found in similar numbers";
     }
   } else if (nm6) {
     platform = "6800";
     candidates = ["6800"];
-    basis = "พบ " + named("6800", present6800);
+    basis = "Found " + named("6800", present6800);
   } else if (nm5) {
     platform = "5800";
     candidates = ["5800"];
-    basis = "พบ " + named("5800", present5800);
+    basis = "Found " + named("5800", present5800);
   } else if (has4800) {
     platform = "4800";
     candidates = [];
@@ -145,14 +145,14 @@ export function detectPlatform(got: Map<string, MaterialGiven>): PlatformResult 
   } else {
     platform = "unknown";
     candidates = ["6800", "5800"];
-    basis = "ไม่พบ consumable ที่ระบุรุ่นเครื่องได้ — คิดด้วยรุ่นที่ให้สิทธิ์มากกว่า เพื่อไม่ให้ขึ้นธงเกินจริง";
+    basis = "No model-specific consumable found — using the model that gives the larger quota, so flags are not overstated";
   }
 
   if (has4800) {
     const names = present48.map((m) => MARKERS_4800[m]).join(", ");
     basis = basis
-      ? `${basis} · และพบน้ำยา cobas 4800 (${names}) — คิดสิทธิ์ 4800 บวกเพิ่มแยกต่างหาก`
-      : `พบน้ำยา cobas 4800 (${names})`;
+      ? `${basis} · and cobas 4800 reagent found (${names}) — the 4800 quota is added separately`
+      : `cobas 4800 reagent found (${names})`;
     platform = platform === "4800" ? "4800" : `${platform}+4800`;
   }
 

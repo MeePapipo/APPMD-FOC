@@ -69,3 +69,10 @@ describe("longFactsCsv", () => {
     expect(rows[2][2]).toBe("");
   });
 });
+
+describe("quotaStatus - annual quota rows", () => {
+  it("calls an item over its annual quota but under the minimum a Warning, never a bare 'Over'", () => {
+    // accountDetailLoader gives such a row warning: true (over quota, below the admin's minimum units)
+    expect(quotaStatus({ materialNo: "x", expected: 100, free: 101, significant: false, warning: true })).toBe("Warning");
+  });
+});

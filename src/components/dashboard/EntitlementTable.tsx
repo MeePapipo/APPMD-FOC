@@ -36,17 +36,17 @@ const money = (n: number) => `${Math.round(n).toLocaleString()}`;
 type SortKey = "productName" | "expected" | "focQty" | "bonusQty" | "free" | "over" | "ratio" | "excessValue";
 
 const COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
-  { key: "productName", label: "สินค้า" },
+  { key: "productName", label: "Product" },
   { key: "expected", label: "Quota", align: "right" },
   { key: "focQty", label: "FOC", align: "right" },
   { key: "bonusQty", label: "Bonus", align: "right" },
-  { key: "free", label: "รวมแถม", align: "right" },
-  { key: "over", label: "ส่วนเกิน", align: "right" },
-  { key: "ratio", label: "เท่าของสิทธิ์", align: "right" },
-  { key: "excessValue", label: "มูลค่าส่วนเกิน (฿)", align: "right" },
+  { key: "free", label: "FOC + Bonus", align: "right" },
+  { key: "over", label: "Over by", align: "right" },
+  { key: "ratio", label: "× Quota", align: "right" },
+  { key: "excessValue", label: "Excess value (฿)", align: "right" },
 ];
 
-// A null ratio ("ไม่มีสิทธิ์" — something given against a zero quota) sorts as
+// A null ratio ("No quota" — something given against a zero quota) sorts as
 // worse than any finite ratio, matching how the rest of this dashboard
 // treats an undefined-denominator ratio as an extreme, not a missing value.
 function sortValue(r: EntitlementRow, key: SortKey): number | string {
@@ -57,11 +57,11 @@ function sortValue(r: EntitlementRow, key: SortKey): number | string {
 
 const BUCKETS: { key: EntitlementRow["bucket"]; title: string; hint: string; totalKey: keyof Entitlement["totals"]; defaultOpen?: boolean }[] = [
   { key: "over", title: "Over Quota", hint: "Given more than the quota", totalKey: "overCost", defaultOpen: true },
-  { key: "within", title: "อยู่ในสิทธิ์", hint: "แถมเท่ากับหรือน้อยกว่าสิทธิ์", totalKey: "withinCost" },
-  { key: "noRule", title: "ไม่มีสูตรคำนวณ", hint: "ไม่มีทั้งในไฟล์ master และในรายการ Additional FOC", totalKey: "noRuleCost" },
-  { key: "reagent", title: "น้ำยาหลักแถมฟรี", hint: "ไม่นำมาเทียบกับ quota แต่นับรวมเป็นฐานคำนวณ quota ของ item อื่น (น้ำยาที่แถมถูกใช้บนเครื่องจริง) — ต้นทุนแสดงตามจริง", totalKey: "reagentFreeCost" },
-  { key: "wrongPlatform", title: "ส่งผิดรุ่นเครื่อง", hint: "มีสูตรคำนวณ แต่เป็นของรุ่นเครื่องที่ account นี้ไม่ได้ใช้", totalKey: "wrongPlatformCost" },
-  { key: "additional", title: "Additional FOC", hint: "ของแถมที่ไม่ผูกกับ assay จึงไม่มี Quota — คิดเป็นต้นทุนที่เสียไป", totalKey: "additionalCost" },
+  { key: "within", title: "Within quota", hint: "Given the quota or less", totalKey: "withinCost" },
+  { key: "noRule", title: "No formula", hint: "In neither the master file nor the Additional FOC list", totalKey: "noRuleCost" },
+  { key: "reagent", title: "Main reagent given free", hint: "Not compared with a quota, but counted in the base of the other items' quota (free reagent is run on the instrument) — cost shown as is", totalKey: "reagentFreeCost" },
+  { key: "wrongPlatform", title: "Wrong instrument model", hint: "Has a formula, but for a model this account does not run", totalKey: "wrongPlatformCost" },
+  { key: "additional", title: "Additional FOC", hint: "Give-aways not tied to an assay, so no quota — counted as cost incurred", totalKey: "additionalCost" },
 ];
 
 /** "Quota vs actual given" — Part 2 of the account drill-down. Mirrors the
@@ -110,11 +110,11 @@ export function EntitlementTable({ entitlement, period = null }: { entitlement: 
 
   return (
     <div>
-      <h3 className="mb-1 text-sm font-semibold text-ink">Quota เท่าไร vs แถมจริงเท่าไร</h3>
-      <p className="mb-1 text-xs text-muted">{period ? `เฉพาะปี ${period}` : "ครอบคลุมทั้งช่วงข้อมูล"} ไม่ขึ้นกับตัวกรองเดือน · จำนวนเป็นกล่อง</p>
+      <h3 className="mb-1 text-sm font-semibold text-ink">Quota vs actually given</h3>
+      <p className="mb-1 text-xs text-muted">{period ? `Year ${period} only` : "Covers the whole data range"}, independent of the month filter · quantities in boxes</p>
       {typeof entitlement.bills === "number" && (
         <p className="mb-3 text-xs text-muted">
-          บิลน้ำยา (เดือนที่มียอดขาย) {entitlement.bills.toLocaleString()} บิล · แถมเกินสิทธิ์ไม่เกิน +{entitlement.bills.toLocaleString()} = <span className="font-medium text-warning">Warning</span> (เหลือง) · เกินกว่านั้น = <span className="font-medium text-negative">Over Quota</span> (แดง)
+          Reagent bills (months with sales): {entitlement.bills.toLocaleString()} · over quota by up to +{entitlement.bills.toLocaleString()} = <span className="font-medium text-warning">Warning</span> (yellow) · more than that = <span className="font-medium text-negative">Over Quota</span> (red)
         </p>
       )}
 
@@ -152,7 +152,7 @@ export function EntitlementTable({ entitlement, period = null }: { entitlement: 
                     <td colSpan={7} className="py-2 pl-3 pr-3">
                       <button type="button" onClick={() => toggle(b.key)} className="inline-flex items-center gap-1.5 text-left font-medium text-ink">
                         <span aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
-                        {b.title} · {rows.length} รายการ · {b.hint}
+                        {b.title} · {rows.length} item{rows.length === 1 ? "" : "s"} · {b.hint}
                       </button>
                     </td>
                     <td className="py-2 pl-3 pr-3 text-right font-semibold text-ink">
@@ -197,7 +197,7 @@ export function EntitlementTable({ entitlement, period = null }: { entitlement: 
                             {hasQuota ? (r.over > 0 ? `+${r.over.toLocaleString()}` : r.over.toLocaleString()) : "—"}
                           </td>
                           <td className={`py-2 pr-3 text-right tabular-nums font-medium text-muted`}>
-                            {r.ratio !== null ? `${r.ratio.toFixed(2)}×` : hasQuota ? "ไม่มีสิทธิ์" : "—"}
+                            {r.ratio !== null ? `${r.ratio.toFixed(2)}×` : hasQuota ? "No quota" : "—"}
                           </td>
                           <td className="py-2 pl-3 pr-3 text-right tabular-nums text-ink">฿{money(r.excessValue)}</td>
                         </tr>

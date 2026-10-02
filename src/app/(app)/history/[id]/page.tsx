@@ -123,7 +123,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
           <h2 className="text-sm font-medium text-ink">Order lines</h2>
           <div className="flex items-center gap-2">
             {doc.overGive.lineCount > 0 && (
-              <Badge tone="warning">Extra Bonus: {doc.overGive.lineCount} รายการ</Badge>
+              <Badge tone="warning">Extra Bonus: {doc.overGive.lineCount} item{doc.overGive.lineCount === 1 ? "" : "s"}</Badge>
             )}
             <Badge tone={doc.status === "VOID" ? "negative" : "positive"}>{doc.status}</Badge>
           </div>
@@ -135,7 +135,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
         {doc.overGive.lineCount > 0 && (
           <p className="mb-3 rounded-lg bg-warning-tint p-3 text-sm text-warning">
             <span className="font-semibold">
-              Extra Bonus: {doc.overGive.lineCount} รายการ · +{doc.overGive.packs} หน่วย ·{" "}
+              Extra Bonus: {doc.overGive.lineCount} item{doc.overGive.lineCount === 1 ? "" : "s"} · +{doc.overGive.packs} unit{doc.overGive.packs === 1 ? "" : "s"} ·{" "}
               {money(doc.overGive.value)} THB
             </span>
             <span className="mt-1 block">

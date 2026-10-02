@@ -61,7 +61,7 @@ export function CalculationPreview({ selected, stale, optionalTicked, onToggle, 
       {overGive.lineCount > 0 && (
         <p role="status" className="rounded-lg bg-warning-tint p-3 text-sm text-warning">
           <span className="font-semibold">
-            Extra Bonus: {overGive.lineCount} รายการ · +{overGive.packs} หน่วย ·{" "}
+            Extra Bonus: {overGive.lineCount} item{overGive.lineCount === 1 ? "" : "s"} · +{overGive.packs} unit{overGive.packs === 1 ? "" : "s"} ·{" "}
             {money(overGive.value)} THB
           </span>
           <span className="mt-1 block">

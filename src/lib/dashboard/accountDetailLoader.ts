@@ -99,7 +99,7 @@ export async function loadAccountDetail(name: string, itemGroups: string[] | nul
       // The quota is the yearly figure Tableau holds; given = FOC + Bonus in the year.
       const out: Record<string, YearQuota> = {};
       for (const i of annualItems(allRows.map((r) => ({ ...r, accountName: name })), year, alert.minOverUnits)) {
-        if (i.quota > 0) out[i.materialNo] = { quota: i.quota, free: i.given, focQty: i.focQty, bonusQty: i.bonusQty, significant: i.over };
+        if (i.quota > 0) out[i.materialNo] = { quota: i.quota, free: i.given, focQty: i.focQty, bonusQty: i.bonusQty, significant: i.over, warning: !i.over && i.diff > 0 };
       }
       return out;
     }
