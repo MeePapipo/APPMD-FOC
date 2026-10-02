@@ -13,7 +13,7 @@
  * month names), and a trailing grand-total row.
  */
 
-const DIM = { TLEVEL3: 0, TLEVEL6: 1, SHIPNUM: 3, SHIPNAME: 4, STATE: 5, PL3: 6, PL6: 8, CATEGORY: 9, PRODUCT: 10 };
+const DIM = { TLEVEL3: 0, TLEVEL6: 1, SHIPNUM: 3, SHIPNAME: 4, STATE: 5, PL3: 6, PL4: 7, PL6: 8, CATEGORY: 9, PRODUCT: 10 };
 const N_DIM = 11;
 const TOTAL_MEASURES = [
   "Quantity(Custom)",
@@ -45,7 +45,18 @@ export const THAI_MONTHS: Record<string, number> = {
 export const BE_OFFSET = 543;
 
 const REVENUE_CATEGORY = "Reagents, kits";
-const EXCLUDED_TEAMS = new Set(["TH - ThaiRedCross", "TH - TD", "TH - RCSC", "TH - FMI"]);
+// Not Molecular/Pathology customers. Thai Red Cross (cobas MPX users) is kept; the old "RED CROSS in the ship-to
+// name" rule is gone for the same reason.
+const EXCLUDED_TEAMS = new Set(["TH - RCSC", "TH - FMI"]);
+// TH - TD is Tissue Diagnostics, the Pathology team: kept for Pathology, but its Molecular sales stay out of the
+// Molecular numbers (as before), which are compared with the Tableau reference.
+const EXCLUDED_TEAMS_MOLECULAR = new Set(["TH - TD"]);
+
+const MOLECULAR_PL3 = "MOLECULAR LAB";
+const PATHOLOGY_PL3 = "PATHOLOGY LAB";
+// Tableau files the HPV sample-collection items (cell collection medium, cervical brush, swab, ThinPrep vial...) under
+// Pathology's PRE-ANALYTICS (PL4). They are give-aways of an HPV order, so they belong to Molecular Lab.
+const PRE_ANALYTICS_PL4 = "PRE-ANALYTICS";
 
 // Tableau leaves Product Category Text blank on real reagent/control rows;
 // dropping them would understate revenue — classify by SKU name instead.
@@ -159,7 +170,7 @@ export type FocActualRow = {
   rep: string | null;
   /** Item Group (Tableau "Product Category Text"); null on rows stored before it was kept. */
   category: string | null;
-  /** Product (Tableau PL3: MOLECULAR LAB, CORE LAB...); null when the export has none. */
+  /** Product (Tableau PL3: MOLECULAR LAB, PATHOLOGY LAB); Pathology's PRE-ANALYTICS rows are stored as MOLECULAR LAB. Null when the export has none. */
   product: string | null;
   /** The yearly quota Tableau holds for this account x item (Quota(Year)); null when none is set. */
   annualQuota: number | null;
@@ -260,17 +271,24 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
     const tlevel3 = d[DIM.TLEVEL3];
     const shipName = d[DIM.SHIPNAME] ? cleanName(d[DIM.SHIPNAME]) : "(ไม่ระบุ Ship-to)";
     let category = d[DIM.CATEGORY] ?? "";
-    if (allowedPl3 && !allowedPl3.has((d[DIM.PL3] ?? "").trim().toUpperCase())) {
+    const sourcePl3 = (d[DIM.PL3] ?? "").trim().toUpperCase();
+    const hplPreAnalytics = sourcePl3 === PATHOLOGY_PL3 && (d[DIM.PL4] ?? "").trim().toUpperCase() === PRE_ANALYTICS_PL4;
+    const productLine = hplPreAnalytics ? MOLECULAR_PL3 : sourcePl3;
+    if (allowedPl3 && !allowedPl3.has(productLine)) {
       excludedProductLine++;
       continue;
     }
-    if (!tlevel3 || /RED\s*CROSS/i.test(shipName) || EXCLUDED_TEAMS.has(tlevel3)) {
+    if (!tlevel3 || EXCLUDED_TEAMS.has(tlevel3) || (productLine === MOLECULAR_PL3 && EXCLUDED_TEAMS_MOLECULAR.has(tlevel3))) {
       excludedTeam++;
       continue;
     }
     // Every labelled Item Group is kept (the dashboard filters by it). A blank one is
     // classified from the product name; hardware and unclassifiable products stay out.
     if (category === "") category = classifyBlankCategory(d[DIM.PL6], d[DIM.PRODUCT]) ?? "";
+    // Pathology keeps everything (the dashboard filters by Item Group); the collection items Tableau leaves
+    // uncategorised (ThinPrep vial, cervical brush) are consumables.
+    if (category === "" && hplPreAnalytics) category = "Consumables";
+    if (category === "" && productLine === PATHOLOGY_PL3) category = "Uncategorised";
     if (category === "") {
       excludedCategory++;
       continue;
@@ -319,8 +337,8 @@ export function parseFocActualsCsv(buf: Uint8Array, options: ParseOptions = {}):
           team: tlevel3 || null,
           rep: tlevel6 || null,
           category,
-          product: (r[DIM.PL3] ?? "").trim() || null,
-          annualQuota: annualQuota || null,
+          product: hplPreAnalytics ? MOLECULAR_PL3 : (r[DIM.PL3] ?? "").trim() || null,
+          annualQuota: hplPreAnalytics ? null : annualQuota || null,
           accountName: shipName,
           materialNo: product.code,
           productName: product.name,

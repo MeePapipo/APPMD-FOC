@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 
-export const DEFAULT_PRODUCT_LINES = ["MOLECULAR LAB", "PATHOLOGY LAB", "CORE LAB"];
+export const DEFAULT_PRODUCT_LINES = ["MOLECULAR LAB", "PATHOLOGY LAB"];
 
 /** The Tableau PL3 product lines the FOC import keeps (admin-editable). */
 export async function loadAllowedProductLines(): Promise<string[]> {

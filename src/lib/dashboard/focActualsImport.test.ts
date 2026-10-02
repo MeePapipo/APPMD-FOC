@@ -81,14 +81,32 @@ describe("parseFocActualsCsv", () => {
     });
   });
 
-  it("excludes rows for excluded teams (e.g. Thai Red Cross)", () => {
+  it("excludes rows for excluded teams (RCSC, FMI)", () => {
     const row = buildRow(
-      ["TH - ThaiRedCross", "Rep A", "", "1", "Red Cross Center", "Bangkok", "", "", "", "Reagents, kits", "MAT001 - X"],
+      ["TH - RCSC", "Rep A", "", "1", "Some Center", "Bangkok", "", "", "", "Reagents, kits", "MAT001 - X"],
       { "Revenue(Custom)": 1000 },
     );
     const { rows, meta } = parseFocActualsCsv(buildCsv([row]));
     expect(rows).toHaveLength(0);
     expect(meta.excludedTeam).toBe(1);
+  });
+
+  it("keeps Thai Red Cross rows, and Tissue Diagnostics (TD) rows outside Molecular", () => {
+    const red = buildRow(
+      ["TH - ThaiRedCross", "Rep A", "", "1", "THAI RED CROSS (PHUKET)", "Phuket", "MOLECULAR LAB", "", "", "Reagents, kits", "MAT001 - X"],
+      { "Revenue(Custom)": 1000 },
+    );
+    const tdPathology = buildRow(
+      ["TH - TD", "Rep B", "", "2", "Chulalongkorn Hospital Thai Red Cross", "Bangkok", "PATHOLOGY LAB", "ADVANCED STAINING", "", "Reagents, kits", "MAT002 - Y"],
+      { "Revenue(Custom)": 500 },
+    );
+    const tdMolecular = buildRow(
+      ["TH - TD", "Rep B", "", "3", "Faculty of Medicine", "Bangkok", "MOLECULAR LAB", "MOLECULAR WORK AREA", "", "Reagents, kits", "MAT003 - Z"],
+      { "Revenue(Custom)": 700 },
+    );
+    const { rows, meta } = parseFocActualsCsv(buildCsv([red, tdPathology, tdMolecular]));
+    expect(rows.map((r) => `${r.product}:${r.team}`).sort()).toEqual(["MOLECULAR LAB:TH - ThaiRedCross", "PATHOLOGY LAB:TH - TD"]);
+    expect(meta.excludedTeam).toBe(1); // TD's Molecular sales
   });
 
   it("excludes a row with no TLevel3 team at all", () => {
@@ -257,5 +275,41 @@ describe("parseFocActualsCsv - Product and annual quota", () => {
   it("is null where no quota is set (a Product without quotas, such as Pathology here)", () => {
     const { rows } = parseFocActualsCsv(csv);
     expect(rows.find((r) => r.materialNo === "MAT2")?.annualQuota).toBeNull();
+  });
+});
+
+describe("parseFocActualsCsv - Pathology and the HPV pre-analytics items", () => {
+  const periods: Period[] = [{ be: "2569", thai: "มกราคม" }];
+  const row = (pl3: string, pl4: string, category: string, product: string, team = "TH - North") =>
+    ({ dims: [team, "Rep A", "", "1", "LAB A", "Bangkok", pl3, pl4, "PL6X", category, product], values: [{ "FOC Quantity": 2, "FOC Cost": 100, "Selling Quantity": 1 }] });
+  const csv = buildMultiCsv(periods, [
+    row("PATHOLOGY LAB", "PRE-ANALYTICS", "Reagents, kits", "08779040190 - KIT CERVICAL COLLECTION BRUSH"),
+    row("PATHOLOGY LAB", "PRE-ANALYTICS", "", "09178163001 - ThinPrep Collection media vial (20mL)"),
+    row("PATHOLOGY LAB", "ADVANCED STAINING", "Reagents, kits", "06523897001 - p57 Antibody", "TH - TD"),
+    row("PATHOLOGY LAB", "PRIMARY STAINING", "Instruments", "MATI - H&E instrument", "TH - TD"),
+    row("PATHOLOGY LAB", "ADVANCED STAINING", "", "05291208001 - 458552 WORKFLOW SYSTEMS SETLMT"),
+    row("CORE LAB", "SERUM WORK AREA", "Reagents, kits", "MATC - Core kit"),
+  ]);
+  const { rows, meta } = parseFocActualsCsv(csv, { allowedProductLines: ["MOLECULAR LAB", "PATHOLOGY LAB"] });
+  const byMat = (m: string) => rows.find((r) => r.materialNo === m);
+
+  it("stores Pathology's PRE-ANALYTICS rows as Molecular Lab, with no annual quota", () => {
+    expect(byMat("08779040190")?.product).toBe("MOLECULAR LAB");
+    expect(byMat("08779040190")?.annualQuota).toBeNull();
+  });
+
+  it("keeps an uncategorised pre-analytics item (it is no longer in the master) as a consumable", () => {
+    expect(byMat("09178163001")).toMatchObject({ product: "MOLECULAR LAB", category: "Consumables" });
+  });
+
+  it("keeps all Pathology staining rows, whatever the Item Group", () => {
+    expect(byMat("06523897001")).toMatchObject({ product: "PATHOLOGY LAB", team: "TH - TD", category: "Reagents, kits" });
+    expect(byMat("MATI")?.category).toBe("Instruments");
+    expect(byMat("05291208001")).toMatchObject({ product: "PATHOLOGY LAB", category: "Uncategorised" });
+  });
+
+  it("drops Core Lab when it is not an allowed Product", () => {
+    expect(byMat("MATC")).toBeUndefined();
+    expect(meta.excludedProductLine).toBe(1);
   });
 });
