@@ -60,7 +60,10 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
   const productChoices = [...new Set(productGroups.map((g) => g.product ?? LEGACY_PRODUCT))].sort();
   const years = [...new Set(allActuals.map((f) => f.year))].sort((a, b) => b - a);
   const year = resolveYear(p, years);
-  p = { ...p, year: year || undefined };
+  // Every Team present for this Product, for the Team chips (the raw TLevel3 value). A Team picked under another
+  // Product (the filter survives switching Product in the URL) that has no rows here is ignored, not shown as 0.
+  const teamChoices = [...new Set(allActuals.map((f) => f.team).filter((t): t is string => !!t))];
+  p = { ...p, year: year || undefined, ateam: p.ateam && teamChoices.includes(p.ateam) ? p.ateam : undefined };
   const itemGroups = parseItemGroups(p.ig);
   // Molecular Lab's default is the four Item Groups the formula knows; the annual-quota Products
   // show every group until one is picked.
@@ -125,5 +128,5 @@ export async function loadDashboardScope(p: DashboardParams, opts: { alerts: boo
     const prior = new Map(focAccountRows(priorFacts).map((a) => [a.accountName, a]));
     accountRows = accountRows.map((a) => ({ ...a, prev: { revenue: prior.get(a.accountName)?.revenue ?? 0, totalCost: prior.get(a.accountName)?.totalCost ?? 0, label: compare.label } }));
   }
-  return { allActuals, years, periodRows, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, itemGroups, product, productChoices, quotaMode, quotaYear, year, compare, priorFacts };
+  return { allActuals, years, periodRows, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, teamChoices, itemGroups, product, productChoices, quotaMode, quotaYear, year, compare, priorFacts };
 }

@@ -119,7 +119,7 @@ export function FocOnlyCell({ row }: { row: AccountRow }) {
   const { focStandaloneCost, focFlagged } = row.net;
   if (focStandaloneCost <= 0) return <span className="text-xs text-muted">—</span>;
   return (
-    <span className="inline-flex items-center gap-2" title="Stand-alone FOC: given with no reagent sold alongside it">
+    <span className="inline-flex items-center gap-2" title="Stand-alone FOC: given with no reagent sold alongside it (includes main reagent given free, e.g. to compensate for a breakdown)">
       <span className="tabular-nums">{money(focStandaloneCost)}</span>
       {focFlagged && <Badge tone="warning">Flag</Badge>}
     </span>
@@ -144,7 +144,7 @@ export const ACCOUNT_COLUMNS: AccountColumn[] = [
   { key: "totalCost", label: "FOC+Bonus cost", align: "right", sortValue: (r) => r.totalCost, hint: "Small arrow: change against the same months of the previous year; red = more cost, green = less", cell: (r) => <WithDelta value={<span className="tabular-nums">{money(r.totalCost)}</span>} delta={costDelta(r)} /> },
   { key: "ratio", label: "Cost/revenue", align: "right", sortValue: (r) => r.ratio, hint: "Small arrow: move in percentage points against the same months of the previous year", cell: (r) => <WithDelta value={<RatioBadge ratio={r.ratio} />} delta={ratioDelta(r)} /> },
   { key: "quota", label: "Quota", align: "right", sortValue: quotaSortValue, hint: "Annual-quota Products: items given more than their yearly quota. Otherwise the whole account: Actual Bonus (what reps gave, at master prices) vs Quota Bonus (what the formula earns from the reagents sold); the percentage is how far Actual Bonus is above (+) or below (−) Quota Bonus. Over Quota only past the % and THB set in Settings. Item-level detail is in the account drawer.", cell: (r) => <QuotaCell row={r} /> },
-  { key: "focOnly", label: "FOC only", align: "right", sortValue: (r) => r.net?.focStandaloneCost ?? 0, hint: "Stand-alone FOC cost (THB): given with no reagent sold alongside it, carries VAT", cell: (r) => <FocOnlyCell row={r} /> },
+  { key: "focOnly", label: "FOC only", align: "right", sortValue: (r) => r.net?.focStandaloneCost ?? 0, hint: "Stand-alone FOC cost (THB): given with no reagent sold alongside it, carries VAT. Includes main reagent given free (e.g. compensation for a breakdown)", cell: (r) => <FocOnlyCell row={r} /> },
   { key: "trend", label: "Monthly cost", hint: "FOC+Bonus cost, Jan to Dec of the selected year", cell: (r, { year }) => <Sparkline values={r.monthlyCost} year={year} /> },
 ];
 

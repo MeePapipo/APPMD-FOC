@@ -75,7 +75,7 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
   // excluding them is a separate toggle from ">20% only" (which, correctly,
   // still counts an N/A account as a breach: an unbillable give-away is worse
   // than 20%, not undefined for that purpose).
-  const { allActuals, years, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, product, productChoices, quotaMode, year: scopeYear, compare, priorFacts } = await timed("dashboard: whole scope", () => loadDashboardScope(params));
+  const { allActuals, years, accountNames, accountRows, facts, alerts, annualAlerts, itemGroupChoices, teamChoices, product, productChoices, quotaMode, year: scopeYear, compare, priorFacts } = await timed("dashboard: whole scope", () => loadDashboardScope(params));
 
   if (allActuals.length === 0) {
     return (
@@ -83,7 +83,7 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
         {isAdmin && <FocActualsImportControl allowedProductLines={allowedProductLines} dataThrough={dataThrough} />}
         {/* A Product with nothing imported yet still needs its picker, or there is no way back. */}
         {params.pl3 && (
-          <ActualsFilters view="overview" years={[]} year="" accountNames={[]} accountCount={0} itemGroupChoices={[]} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
+          <ActualsFilters view="overview" years={[]} year="" accountNames={[]} accountCount={0} itemGroupChoices={[]} teamChoices={[]} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
         )}
         <p className="py-12 text-center text-sm text-muted">
           {params.pl3 ? `No actuals imported for ${productLabel(product)} yet` : "No national actuals imported yet"}
@@ -103,7 +103,7 @@ async function ActualsContent({ isAdmin, view, params }: { isAdmin: boolean; vie
       </p>
 
       <DashboardViewTabs current={view} params={{ ...params }} />
-      <ActualsFilters view={view} years={years} year={scopeYear} accountNames={accountNames} accountCount={accountRows.length} itemGroupChoices={itemGroupChoices} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
+      <ActualsFilters view={view} years={years} year={scopeYear} accountNames={accountNames} accountCount={accountRows.length} itemGroupChoices={itemGroupChoices} teamChoices={teamChoices} product={product} defaultProduct={defaultProduct} productChoices={productChoices} quotaMode={quotaMode} />
 
       {view === "accounts" && <AccountsContent params={params} years={years} accountRows={accountRows} allActuals={allActuals} quotaMode={quotaMode} />}
       {view === "overview" && <OverviewContent accountRows={accountRows} facts={facts} compare={compare} priorFacts={priorFacts} year={scopeYear ? Number(scopeYear) : null} product={product} itemGroups={params.ig ?? ""} />}
@@ -122,8 +122,10 @@ function AccountsContent({ params, years, accountRows, allActuals, quotaMode }: 
   // The sparkline shows the whole selected year (team filter applies, the
   // month range does not), so a month filter never flattens the trend.
   const inScope = new Set(accountRows.map((a) => a.accountName));
+  // Same rule as the scope: a Team with no rows under this Product (left over from another Product) is ignored.
+  const ateam = params.ateam && allActuals.some((f) => f.team === params.ateam) ? params.ateam : undefined;
   const series = monthlyCostByAccount(
-    allActuals.filter((f) => inPeriodScope(f, { ...params, month: undefined, mto: undefined, year: String(year) })),
+    allActuals.filter((f) => inPeriodScope(f, { ...params, ateam, month: undefined, mto: undefined, year: String(year) })),
     year,
     inScope,
   );

@@ -89,6 +89,12 @@ describe("computeEntitlement", () => {
     return m;
   }
 
+  it("names an earned-but-never-given item from the master, not by its material number", () => {
+    const g = got({ "05534925001": { sold: 1 }, "REAGENT-HIV": { sold: 96 } }); // nothing of CONS-BATCH given
+    const row = computeEntitlement(g, assays, items, new Set(), tpbInput).rows.find((r) => r.materialNo === "CONS-BATCH");
+    expect(row).toMatchObject({ productName: "Batch consumable", free: 0, bucket: "within" });
+  });
+
   it("main reagent given free goes to the reagent bucket, never a quota row", () => {
     const g = got({
       "05534925001": { sold: 1 }, // force platform = 6800
@@ -96,7 +102,8 @@ describe("computeEntitlement", () => {
     });
     const result = computeEntitlement(g, assays, items, new Set(), tpbInput);
     expect(result.totals.reagentFreeCost).toBe(500);
-    expect(result.rows.find((r) => r.materialNo === "REAGENT-HIV")).toBeUndefined();
+    // Listed under its own bucket (so the count matches the cost), with no quota to compare against.
+    expect(result.rows.find((r) => r.materialNo === "REAGENT-HIV")).toMatchObject({ bucket: "reagent", expected: 0, free: 1, freeCost: 500, severity: null, significant: false });
   });
 
   it("flags over-entitlement with the correct excess qty and value, from Selling Quantity — not from FOC/Bonus given", () => {
@@ -145,25 +152,29 @@ describe("computeEntitlement", () => {
     expect(row.freeCost).toBe(500); // freeCost itself is untouched
   });
 
-  it("a free reagent box must never inflate its own quota (Selling Quantity only, not tests given)", () => {
-    // Same setup as above but the reagent itself was also given 1000 packs
-    // for free — if quota used total tests (sold+foc+bonus) this would blow
-    // the CONS-BATCH quota way up. It must not move at all.
-    const g1 = got({
+  it("main reagent given free earns the same supporting items as sold reagent (and its cost is still only a cost)", () => {
+    // 96 sold + 96 given free runs 192 tests: the CONS-BATCH quota follows the tests actually run.
+    const sold = got({
       "05534925001": { sold: 1 },
-      "REAGENT-HIV": { sold: 96, foc: 0, bonus: 0 },
+      "REAGENT-HIV": { sold: 192, foc: 0, bonus: 0 },
       "CONS-BATCH": { foc: 20, bonus: 30, freeCost: 5000 },
     });
-    const g2 = got({
+    const soldPlusFree = got({
       "05534925001": { sold: 1 },
-      "REAGENT-HIV": { sold: 96, foc: 1000, bonus: 0 }, // free reagent given, same Selling Qty
+      "REAGENT-HIV": { sold: 96, foc: 48, bonus: 48, freeCost: 9000 },
       "CONS-BATCH": { foc: 20, bonus: 30, freeCost: 5000 },
     });
-    const r1 = computeEntitlement(g1, assays, items, new Set(), tpbInput);
-    const r2 = computeEntitlement(g2, assays, items, new Set(), tpbInput);
-    expect(r1.rows.find((r) => r.materialNo === "CONS-BATCH")?.expected).toBe(
-      r2.rows.find((r) => r.materialNo === "CONS-BATCH")?.expected,
-    );
+    const soldOnly = got({
+      "05534925001": { sold: 1 },
+      "REAGENT-HIV": { sold: 96 },
+      "CONS-BATCH": { foc: 20, bonus: 30, freeCost: 5000 },
+    });
+    const quota = (g: ReturnType<typeof got>) => computeEntitlement(g, assays, items, new Set(), tpbInput).rows.find((r) => r.materialNo === "CONS-BATCH")?.expected ?? 0;
+    expect(quota(soldPlusFree)).toBe(quota(sold));
+    expect(quota(soldPlusFree)).toBeGreaterThan(quota(soldOnly));
+    const result = computeEntitlement(soldPlusFree, assays, items, new Set(), tpbInput);
+    expect(result.rows.find((r) => r.materialNo === "REAGENT-HIV")?.bucket).toBe("reagent"); // listed, never compared with a quota
+    expect(result.totals.reagentFreeCost).toBe(9000);
   });
 
   it("a negative (credit/return) Selling Quantity must not produce a negative test volume", () => {

@@ -10,12 +10,21 @@ import { productLabel } from "@/lib/dashboard/accountQuota";
 // FocActual.team stores the raw TLevel3 string from the Tableau source, not
 // this app's own Team enum — hence the "ateam" param name and these literal
 // values. The chips use the short names the reps know the teams by.
-const TEAM_CHIPS = [
-  { value: "TH - North", label: "North" },
-  { value: "TH - South", label: "South" },
-  { value: "TH - Private - BKK", label: "Private-BKK" },
-  { value: "TH - BP", label: "BP" },
-];
+const TEAM_ORDER = ["TH - North", "TH - South", "TH - Private - BKK", "TH - BP"];
+const TEAM_LABELS: Record<string, string> = {
+  "TH - Private - BKK": "Private-BKK",
+  "TH - Private - UPC": "Private-UPC",
+  "TH - ThaiRedCross": "Thai Red Cross",
+  "TH - TD": "TD",
+  "TH - NPC": "NPC",
+};
+/** One chip per Team that has data for the chosen Product: the usual four first, then the rest A-Z. */
+export function teamChips(choices: string[]): { value: string; label: string }[] {
+  const rank = (t: string) => (TEAM_ORDER.includes(t) ? TEAM_ORDER.indexOf(t) : TEAM_ORDER.length);
+  return [...choices]
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map((value) => ({ value, label: TEAM_LABELS[value] ?? value.replace(/^TH - /, "") }));
+}
 
 const MONTH_LABELS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -57,6 +66,7 @@ export function ActualsFilters({
   accountNames,
   accountCount,
   itemGroupChoices,
+  teamChoices,
   product,
   defaultProduct,
   productChoices,
@@ -70,6 +80,7 @@ export function ActualsFilters({
   accountCount: number;
   /** Every Item Group present in the data. */
   itemGroupChoices: string[];
+  teamChoices: string[];
   /** The Product shown, the default one (left out of the URL) and every Product in the data. */
   product: string;
   defaultProduct: string;
@@ -102,7 +113,9 @@ export function ActualsFilters({
 
   const annual = quotaMode === "annual";
   const get = (key: string) => searchParams.get(key) ?? "";
-  const team = get("ateam");
+  const chips = teamChips(teamChoices);
+  // A Team that has no rows under this Product is ignored by the server, so it must not look selected here.
+  const team = chips.some((t) => t.value === get("ateam")) ? get("ateam") : "";
   const measure = get("m") === "cost" ? "cost" : "qty";
 
   return (
@@ -161,14 +174,11 @@ export function ActualsFilters({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {TEAM_CHIPS.map((t) => (
+        {chips.map((t) => (
           <Chip key={t.value} active={team === t.value} onClick={() => setParam("ateam", team === t.value ? "" : t.value)}>
             {t.label}
           </Chip>
         ))}
-        {team && !TEAM_CHIPS.some((t) => t.value === team) && (
-          <Chip active onClick={() => setParam("ateam", "")}>{team}</Chip>
-        )}
         {view === "accounts" && (
           <Chip active={get("top") === "1"} onClick={() => setParam("top", get("top") === "1" ? "" : "1")}>
             Top 10 by cost

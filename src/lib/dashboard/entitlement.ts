@@ -12,10 +12,12 @@
  * Two load-bearing rules, confirmed against real data before writing this
  * (see the plan for how):
  *
- * 1. **Quota is driven by Selling Quantity only, never `FocActual.tests`.**
- *    Free reagent must never enlarge its own quota (praditww's rule,
- *    reversed in the reference project on 2026-09-29 for the same reason).
- *    The caller passes `FocActual.soldQty` (unrestricted) as `sold`, not
+ * 1. **Quota is driven by main-reagent packs received (Selling + FOC + Bonus
+ *    Quantity), never `FocActual.tests`.** (Changed 2026-10-03: it used to be
+ *    Selling only, but reagent given free is run on the instrument and needs
+ *    the same supporting items, so counting sales alone left real FOC/Bonus
+ *    above the quota. The free reagent's own cost stays a cost, never a quota
+ *    comparison.) The caller passes `FocActual.soldQty` (unrestricted) as `sold`, not
  *    `revenueQty` — for a reagent-kit row the two are numerically identical
  *    (a reagent materialNo is always "Reagents, kits" category), but a
  *    non-reagent give-away item (an Additional FOC consumable, say) can
@@ -171,12 +173,15 @@ function firstAssayByMaterial(assays: AssayLite[], system: string): Map<string, 
   return map;
 }
 
-/** tests[code] = Selling Quantity (packs, > 0 only — a credit/return must
- * never produce a negative test volume) x pack size, for one system. */
+/** tests[code] = packs the customer actually received (sold + FOC + Bonus, > 0 only — a credit/return must
+ * never produce a negative test volume) x pack size, for one system. Main reagent given free (a breakdown
+ * compensation, "buy 10 get 1", a method verification) is run on the instrument like any other, so it earns
+ * the same supporting items; its cost still shows as free cost and is never compared with a quota. */
 function testsFromSelling(got: Map<string, MaterialGiven>, assayByMat: Map<string, AssayLite>): Record<string, number> {
   const tests: Record<string, number> = {};
   for (const [mat, a] of assayByMat) {
-    const packs = got.get(mat)?.sold ?? 0;
+    const d = got.get(mat);
+    const packs = d ? d.sold + d.foc + d.bonus : 0;
     if (packs > 0) tests[a.code] = (tests[a.code] ?? 0) + packs * a.packSize;
   }
   return tests;
@@ -439,13 +444,20 @@ export function computeEntitlement(
   for (const d of got.values()) focStandaloneCost += d.focCostRecent ?? d.focCost ?? 0;
 
   const allMats = new Set<string>([...got.keys(), ...Object.keys(expectedAll)]);
+  // An item the formula says the account earns but that was never given has no Tableau row, so no name: use the master's.
+  const masterName = new Map<string, string>();
+  for (const i of items) if (!masterName.has(i.materialNo)) masterName.set(i.materialNo, i.description);
   for (const mat of allMats) {
-    const d = got.get(mat) ?? { sold: 0, foc: 0, bonus: 0, freeCost: 0, productName: mat };
+    const d = got.get(mat) ?? { sold: 0, foc: 0, bonus: 0, freeCost: 0, productName: masterName.get(mat) ?? mat };
     const free = d.foc + d.bonus;
 
     if (isReagentMat(mat)) {
       totals.reagentFreeCost += d.freeCost;
-      continue; // main reagent given free — cost only, never a quota comparison
+      // Main reagent given free — listed so the count matches the cost, but never a quota comparison.
+      if (free > 0) {
+        rows.push({ materialNo: mat, productName: d.productName, optional: false, expected: 0, focQty: d.foc, bonusQty: d.bonus, free, sold: d.sold, freeCost: d.freeCost, excessValue: d.freeCost, over: free, ratio: null, bucket: "reagent", significant: false, severity: null });
+      }
+      continue;
     }
     if (wrongPlatformMat(mat)) {
       if (free > 0) {
@@ -511,7 +523,7 @@ export function computeEntitlement(
   totals.significantCost = Math.round(totals.significantCost);
 
   // "Main reagent actually sent" summary line — every assay code that had any
-  // Selling-Quantity-derived test volume, across both the 6800/5800 candidate
+  // test volume (sold + FOC + Bonus packs), across both the 6800/5800 candidate
   // results and the additive 4800 track. `batches` is 0 for 4800 codes (no
   // batch concept there) — the UI omits the "(N batches)" suffix in that case.
   const codesSeen = new Set<string>();

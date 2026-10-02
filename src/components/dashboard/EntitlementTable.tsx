@@ -59,7 +59,7 @@ const BUCKETS: { key: EntitlementRow["bucket"]; title: string; hint: string; tot
   { key: "over", title: "Over Quota", hint: "Given more than the quota", totalKey: "overCost", defaultOpen: true },
   { key: "within", title: "อยู่ในสิทธิ์", hint: "แถมเท่ากับหรือน้อยกว่าสิทธิ์", totalKey: "withinCost" },
   { key: "noRule", title: "ไม่มีสูตรคำนวณ", hint: "ไม่มีทั้งในไฟล์ master และในรายการ Additional FOC", totalKey: "noRuleCost" },
-  { key: "reagent", title: "น้ำยาหลักแถมฟรี", hint: "ไม่นำมาเทียบ — เป็นการตัดสินใจเชิงพาณิชย์", totalKey: "reagentFreeCost" },
+  { key: "reagent", title: "น้ำยาหลักแถมฟรี", hint: "ไม่นำมาเทียบกับ quota แต่นับรวมเป็นฐานคำนวณ quota ของ item อื่น (น้ำยาที่แถมถูกใช้บนเครื่องจริง) — ต้นทุนแสดงตามจริง", totalKey: "reagentFreeCost" },
   { key: "wrongPlatform", title: "ส่งผิดรุ่นเครื่อง", hint: "มีสูตรคำนวณ แต่เป็นของรุ่นเครื่องที่ account นี้ไม่ได้ใช้", totalKey: "wrongPlatformCost" },
   { key: "additional", title: "Additional FOC", hint: "ของแถมที่ไม่ผูกกับ assay จึงไม่มี Quota — คิดเป็นต้นทุนที่เสียไป", totalKey: "additionalCost" },
 ];
@@ -93,6 +93,8 @@ export function EntitlementTable({ entitlement, period = null }: { entitlement: 
 
   const byBucket = new Map<string, EntitlementRow[]>();
   for (const r of entitlement.rows) {
+    // An Optional item nothing was given of is the rep's choice, not an unused entitlement: leave it out of the list.
+    if (r.optional && r.free === 0) continue;
     const list = byBucket.get(r.bucket) ?? [];
     list.push(r);
     byBucket.set(r.bucket, list);

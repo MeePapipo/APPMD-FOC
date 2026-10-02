@@ -76,7 +76,7 @@ export function AdminSettingsForm({ initial }: { initial: Values }) {
         <div className="flex flex-wrap gap-x-8 gap-y-5">
           <Field id="netpct" label="Bonus over entitlement by more than (%)" hint="25 means Bonus worth more than 125% of the entitlement." value={form.netOverPct} onChange={set("netOverPct")} step={1} max={1000} />
           <Field id="netmin" label="and by at least (THB)" hint="Small absolute overshoots are ignored." value={form.netMinExcess} onChange={set("netMinExcess")} step={1000} max={100000000} />
-          <Field id="focmin" label="Stand-alone FOC flagged from (THB, selected year)" hint="FOC given with no reagent sale (it carries VAT) is not compared with the formula; an account is flagged once its FOC cost in the year selected on the Dashboard reaches this (the latest 12 months of data when the Year filter is All years)." value={form.focStandaloneMin} onChange={set("focStandaloneMin")} step={1000} max={100000000} />
+          <Field id="focmin" label="Stand-alone FOC flagged from (THB, selected year)" hint="FOC given with no reagent sale (it carries VAT; main reagent given free counts too) is not compared with the formula; an account is flagged once its FOC cost in the year selected on the Dashboard reaches this (the latest 12 months of data when the Year filter is All years)." value={form.focStandaloneMin} onChange={set("focStandaloneMin")} step={1000} max={100000000} />
         </div>
       </section>
 
