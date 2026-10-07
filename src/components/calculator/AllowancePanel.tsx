@@ -78,7 +78,7 @@ export function AllowancePanel({ allowance, lines }: {
                 <td className={cn("py-2 pr-3 text-right font-medium", remaining - line.finalQty < 0 ? "text-negative" : "text-ink")}>{n(remaining - line.finalQty)}</td>
                 <td className="py-2 text-right">
                   {level === "over" && <Badge tone="negative">Over by {n(pastQuota)}</Badge>}
-                  {level === "warning" && <Badge tone="warning">Over by {n(pastQuota)} (warning)</Badge>}
+                  {level === "warning" && <Badge tone="warning">Over by {n(pastQuota)}</Badge>}
                   {level === "full" && <Badge tone="positive">Fully used</Badge>}
                   {level === "within" && <Badge tone="positive">Within</Badge>}
                 </td>
