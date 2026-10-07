@@ -27,9 +27,9 @@ export function AllowancePanel({ allowance, lines }: {
       const pastQuota = a.given + line.finalQty - a.entitled;
       const level: "over" | "warning" | "full" | "within" =
         over > 0 ? (pastQuota > allowance.grace ? "over" : "warning") : line.finalQty > 0 && a.remaining === line.finalQty ? "full" : "within";
-      return { line, ...a, over, level };
+      return { line, ...a, over, pastQuota, level };
     })
-    .sort((x, y) => y.over - x.over || x.line.description.localeCompare(y.line.description));
+    .sort((x, y) => y.pastQuota - x.pastQuota || x.line.description.localeCompare(y.line.description));
   if (rows.length === 0) return null;
   const overCount = rows.filter((r) => r.level === "over").length;
   const warnCount = rows.filter((r) => r.level === "warning").length;
@@ -55,7 +55,7 @@ export function AllowancePanel({ allowance, lines }: {
         <p role="status" className="mt-2 text-sm text-positive">Everything on this order is within the remaining allowance.</p>
       )}
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[40rem] text-sm tabular-nums">
+        <table className="w-full min-w-[46rem] text-sm tabular-nums">
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">
               <th scope="col" className="py-2 pr-3">Item</th>
@@ -63,20 +63,22 @@ export function AllowancePanel({ allowance, lines }: {
               <th scope="col" className="py-2 pr-3 text-right">Quota{allowance.year ? ` ${allowance.year}` : ""}</th>
               <th scope="col" className="py-2 pr-3 text-right">Remaining</th>
               <th scope="col" className="py-2 pr-3 text-right">This order</th>
+              <th scope="col" className="py-2 pr-3 text-right">After this order</th>
               <th scope="col" className="py-2 text-right">Check</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ line, given, entitled, remaining, over, level }) => (
+            {rows.map(({ line, given, entitled, remaining, pastQuota, level }) => (
               <tr key={line.materialNo} className={cn("border-b border-line/60", ROW_HOVER)}>
                 <td className="py-2 pr-3 text-ink">{line.description}</td>
                 <td className="py-2 pr-3 text-right text-muted">{n(given)}</td>
                 <td className="py-2 pr-3 text-right text-muted">{n(entitled)}</td>
                 <td className={cn("py-2 pr-3 text-right font-medium", remaining < 0 ? "text-negative" : "text-ink")}>{n(remaining)}</td>
                 <td className="py-2 pr-3 text-right font-medium text-ink">{n(line.finalQty)}</td>
+                <td className={cn("py-2 pr-3 text-right font-medium", remaining - line.finalQty < 0 ? "text-negative" : "text-ink")}>{n(remaining - line.finalQty)}</td>
                 <td className="py-2 text-right">
-                  {level === "over" && <Badge tone="negative">Over by {n(over)}</Badge>}
-                  {level === "warning" && <Badge tone="warning">Over by {n(over)} (warning)</Badge>}
+                  {level === "over" && <Badge tone="negative">Over by {n(pastQuota)}</Badge>}
+                  {level === "warning" && <Badge tone="warning">Over by {n(pastQuota)} (warning)</Badge>}
                   {level === "full" && <Badge tone="positive">Fully used</Badge>}
                   {level === "within" && <Badge tone="positive">Within</Badge>}
                 </td>
