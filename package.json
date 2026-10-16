@@ -17,6 +17,8 @@
     "copy-reference-data": "tsx scripts/copy-reference-data.ts",
     "import-instrument-usage": "tsx scripts/import-instrument-usage.ts",
     "apply-migrations-neon": "tsx scripts/apply-migrations-neon.ts",
+    "backup-neon": "tsx scripts/backup-neon.ts",
+    "restore-backup": "tsx scripts/restore-backup.ts",
     "add-oncology": "tsx scripts/add-oncology.ts",
     "verify-export": "tsx scripts/verify-export.mts",
     "smoke": "tsx scripts/smoke.mts",
@@ -32,7 +34,7 @@
     "bcryptjs": "^3.0.3",
     "exceljs": "^4.4.0",
     "lucide-react": "^1.43.0",
-    "next": "16.2.10",
+    "next": "16.4.0",
     "next-auth": "^5.0.0-beta.31",
     "pg": "^8.22.0",
     "react": "19.2.4",
@@ -59,5 +61,8 @@
     "typescript": "^5",
     "vitest": "^4.1.10",
     "ws": "^8.22.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }
