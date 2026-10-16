@@ -421,21 +421,14 @@ export function Calculator({ accounts, assays, additionalFoc }: {
             adjustments={adjustments}
             onAdjust={adjustLine}
           />
-          {preview.allowance && (
-            <div className="mt-6">
-              <AllowancePanel
-                allowance={preview.allowance}
-                lines={[...selected.required, ...selected.selectedOptional]}
-              />
-            </div>
-          )}
         </section>
       )}
 
       {/* Shown only once the rep has calculated an order — these are a free
           choice made after seeing what the formula already gives away, and
           they do not invalidate the preview the way editing a reagent line
-          does. Last section before the confirm button. */}
+          does. Placed right after the optional items, the other choice the
+          rep makes. */}
       {preview && selected && (
         <CategorySection
           category="choice"
@@ -450,6 +443,15 @@ export function Calculator({ accounts, assays, additionalFoc }: {
             disabled={busy}
           />
         </CategorySection>
+      )}
+
+      {/* After both give-away choices, so the rep checks the remaining
+          allowance against the whole order before confirming. */}
+      {preview?.allowance && selected && (
+        <AllowancePanel
+          allowance={preview.allowance}
+          lines={[...selected.required, ...selected.selectedOptional]}
+        />
       )}
 
       {preview && selected && <OrderTotals selected={selected} revenue={preview.revenue} />}
