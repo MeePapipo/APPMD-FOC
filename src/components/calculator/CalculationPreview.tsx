@@ -52,7 +52,7 @@ export function CalculationPreview({ selected, stale, optionalTicked, onToggle, 
     <div className="min-w-0 space-y-5">
       {stale && (
         <p role="status" className="rounded-lg bg-warning-tint p-3 text-sm text-warning">
-          Order changed. Submit order again before confirming.
+          Order changed. Calculate again before confirming.
         </p>
       )}
       {/* A reminder, not a gate: handing over extra is allowed, it just has to

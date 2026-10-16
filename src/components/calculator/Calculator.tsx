@@ -27,9 +27,8 @@ interface AssayLine {
   system: SysCode;
   code: string;
   boxes: string;
-  /** Boxes of the same reagent given free (FOC / Bonus); "" = none. */
-  free: string;
-  freeOpen: boolean;
+  /** The line's boxes are given free (FOC / Bonus) rather than billed. */
+  foc: boolean;
 }
 
 export function Calculator({ accounts, assays, additionalFoc }: {
@@ -39,7 +38,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 }) {
   const router = useRouter();
   const [account, setAccount] = useState<AccountDTO | null>(null);
-  const [lines, setLines] = useState<AssayLine[]>([{ id: 0, system: "6800", code: "", boxes: "", free: "", freeOpen: false }]);
+  const [lines, setLines] = useState<AssayLine[]>([{ id: 0, system: "6800", code: "", boxes: "", foc: false }]);
   const nextLineId = useRef(1);
   const requestInFlight = useRef(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -63,16 +62,16 @@ export function Calculator({ accounts, assays, additionalFoc }: {
   // are boxes x the assay's pack size (what the box is labelled as holding).
   const assayOf = (line: AssayLine) =>
     assays.find((assay) => assay.system === line.system && assay.code === line.code);
-  const testsOf = (line: AssayLine) => Number(line.boxes) * (assayOf(line)?.packSize ?? 0);
-  const freeTestsOf = (line: AssayLine) => Number(line.free) * (assayOf(line)?.packSize ?? 0);
-  const selectedLines = lines.filter((line) => line.code || line.boxes || line.free);
-  // Paid boxes and/or free boxes: a line given only free boxes (a breakdown compensation) is a valid order.
+  // A line is either billed or free: paid and free boxes of the same reagent
+  // are two lines, which the totals below add up per reagent.
+  const lineTests = (line: AssayLine) => Number(line.boxes) * (assayOf(line)?.packSize ?? 0);
+  const testsOf = (line: AssayLine) => line.foc ? 0 : lineTests(line);
+  const freeTestsOf = (line: AssayLine) => line.foc ? lineTests(line) : 0;
+  const selectedLines = lines.filter((line) => line.code || line.boxes);
   const validLine = (line: AssayLine) =>
     !!assayOf(line) &&
-    Number.isSafeInteger(Number(line.boxes)) && Number(line.boxes) >= 0 &&
-    Number.isSafeInteger(Number(line.free)) && Number(line.free) >= 0 &&
-    Number(line.boxes) + Number(line.free) > 0 &&
-    Number.isSafeInteger(testsOf(line)) && Number.isSafeInteger(freeTestsOf(line));
+    Number.isSafeInteger(Number(line.boxes)) && Number(line.boxes) > 0 &&
+    Number.isSafeInteger(lineTests(line));
   const testsBySys: TestsBySystem = {};
   const freeTestsBySys: TestsBySystem = {};
   for (const line of selectedLines.filter(validLine)) {
@@ -123,7 +122,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
     if (requestInFlight.current || busy) return;
     if (hasInput && !window.confirm("Clear the account and everything entered on this order, and start again?")) return;
     setAccount(null);
-    setLines([{ id: nextLineId.current++, system: "6800", code: "", boxes: "", free: "", freeOpen: false }]);
+    setLines([{ id: nextLineId.current++, system: "6800", code: "", boxes: "", foc: false }]);
     setPreview(null);
     setStale(false);
     setOptionalTicked({});
@@ -162,12 +161,12 @@ export function Calculator({ accounts, assays, additionalFoc }: {
 
   function addLine() {
     if (requestInFlight.current) return;
-    const line: AssayLine = { id: nextLineId.current++, system: lines.at(-1)?.system ?? "6800", code: "", boxes: "", free: "", freeOpen: false };
+    const line: AssayLine = { id: nextLineId.current++, system: lines.at(-1)?.system ?? "6800", code: "", boxes: "", foc: false };
     setLines((previous) => [...previous, line]);
     invalidatePreview();
   }
 
-  function updateLine(id: number, update: Partial<Pick<AssayLine, "system" | "code" | "boxes" | "free" | "freeOpen">>) {
+  function updateLine(id: number, update: Partial<Pick<AssayLine, "system" | "code" | "boxes" | "foc">>) {
     if (requestInFlight.current) return;
     setLines((previous) => previous.map((line) => line.id === id ? { ...line, ...update } : line));
     invalidatePreview();
@@ -274,13 +273,13 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                 const assay = assays.find((candidate) => candidate.system === line.system && candidate.code === line.code);
                 return (
                   <div key={line.id} role="group" aria-label={`Reagent ${index + 1}`} className="grid grid-cols-[minmax(0,1fr)_2.75rem] gap-3 py-4">
-                    <div className="grid min-w-0 gap-3 md:grid-cols-[10rem_minmax(0,1fr)_8rem]">
+                    <div className="grid min-w-0 gap-3 md:grid-cols-[10rem_minmax(0,1fr)_8rem_auto]">
                       <div className="min-w-0">
                         <label htmlFor={`system-${line.id}`} className="mb-1 block text-xs font-medium text-muted">System</label>
                         <select
                           id={`system-${line.id}`}
                           value={line.system}
-                          onChange={(event) => updateLine(line.id, { system: event.target.value as SysCode, code: "", boxes: "", free: "", freeOpen: false })}
+                          onChange={(event) => updateLine(line.id, { system: event.target.value as SysCode, code: "", boxes: "", foc: false })}
                           className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:outline-brand"
                         >
                           {(Object.keys(SYSTEM_LABELS) as SysCode[]).map((system) => (
@@ -294,7 +293,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                           id={`assay-${line.id}`}
                           value={line.code}
                           required={!!line.boxes}
-                          onChange={(event) => updateLine(line.id, { code: event.target.value, boxes: "", free: "", freeOpen: false })}
+                          onChange={(event) => updateLine(line.id, { code: event.target.value, boxes: "", foc: false })}
                           className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm focus:outline-brand"
                         >
                           <option value="">Select reagent...</option>
@@ -309,10 +308,10 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                         <input
                           id={`boxes-${line.id}`}
                           type="number"
-                          min={Number(line.free) > 0 ? 0 : 1}
+                          min={1}
                           max={Number.MAX_SAFE_INTEGER}
                           step={1}
-                          required={!!line.code && !(Number(line.free) > 0)}
+                          required={!!line.code}
                           disabled={!line.code}
                           value={line.boxes}
                           onChange={(event) => updateLine(line.id, { boxes: event.target.value })}
@@ -320,41 +319,29 @@ export function Calculator({ accounts, assays, additionalFoc }: {
                         />
                         {assay && validLine(line) && (
                           <p aria-live="polite" className="mt-1 text-xs tabular-nums text-muted">
-                            = {testsOf(line).toLocaleString("en-US")} tests
+                            = {lineTests(line).toLocaleString("en-US")} tests{line.foc && " free"}
                           </p>
                         )}
                       </div>
-                      {assay && (
-                        <div className="min-w-0 md:col-span-3">
-                          {line.freeOpen || line.free ? (
-                            <div className="flex flex-wrap items-end gap-3">
-                              <div className="w-40 max-w-full">
-                                <label htmlFor={`free-${line.id}`} className="mb-1 block text-xs font-medium text-muted">Free boxes (FOC / Bonus)</label>
-                                <input
-                                  id={`free-${line.id}`}
-                                  type="number"
-                                  min={0}
-                                  max={Number.MAX_SAFE_INTEGER}
-                                  step={1}
-                                  value={line.free}
-                                  onChange={(event) => updateLine(line.id, { free: event.target.value })}
-                                  className="no-spin w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm tabular-nums focus:outline-brand"
-                                />
-                              </div>
-                              <p className="min-w-0 flex-1 text-xs text-muted">
-                                Main reagent given free (compensation, buy 10 get 1, method verification). It is run on the instrument, so the supporting items below are worked out on paid + free boxes; the free boxes are not billed.
-                              </p>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => updateLine(line.id, { freeOpen: true })}
-                              className="text-xs font-medium text-brand hover:underline"
-                            >
-                              + Free boxes of this reagent
-                            </button>
-                          )}
-                        </div>
+                      <div className="min-w-0">
+                        <span id={`foc-label-${line.id}`} className="mb-1 block text-xs font-medium text-muted">FOC</span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={line.foc}
+                          aria-labelledby={`foc-label-${line.id}`}
+                          title={line.foc ? "Free boxes (FOC / Bonus), not billed" : "Billed boxes"}
+                          disabled={!line.code}
+                          onClick={() => updateLine(line.id, { foc: !line.foc })}
+                          className={`relative mt-1.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50 ${line.foc ? "bg-brand" : "bg-line-strong"}`}
+                        >
+                          <span aria-hidden="true" className={`inline-block h-5 w-5 rounded-full bg-surface shadow transition-transform ${line.foc ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                        </button>
+                      </div>
+                      {assay && line.foc && (
+                        <p className="min-w-0 text-xs text-muted md:col-span-4">
+                          Main reagent given free (compensation, buy 10 get 1, method verification). It is run on the instrument, so the supporting items below are worked out on paid + free boxes; the free boxes are not billed.
+                        </p>
                       )}
                     </div>
                     <Button
@@ -482,7 +469,7 @@ export function Calculator({ accounts, assays, additionalFoc }: {
         )}
         {(!preview || stale) && (
           <Button type="submit" form="calculator-form" disabled={!account || !validOrder || busy}>
-            {loading ? "Calculating order..." : preview ? "Recalculate order" : "Submit order"}
+            {loading ? "Calculating order..." : preview ? "Recalculate" : "Calculate"}
           </Button>
         )}
         {preview && (
