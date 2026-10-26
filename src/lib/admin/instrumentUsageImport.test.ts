@@ -59,6 +59,14 @@ describe("parseSamplesPerRun", () => {
     expect(rows.map((r) => `${r.systemClass}:${r.assay}:${r.samples}`).sort()).toEqual(["c5800:HIVQ:12", "c6800:HIVQ:40"]);
   });
 
+  it("maps eLP's mixed-case Malaria to the master code MALARIA", () => {
+    const { rows, unknownTests } = parseSamplesPerRun(
+      usageFile([{ dims: ["c6800", "9", "วันอังคาร, 01 กันยายน 2569", "Malaria"], cells: ["30", "", ""] }]),
+    );
+    expect(rows.map((r) => r.assay)).toEqual(["MALARIA"]);
+    expect(unknownTests).toEqual({});
+  });
+
   it("splits months and reports tests it cannot map instead of guessing", () => {
     const { rows, months, unknownTests } = parseSamplesPerRun(
       usageFile([

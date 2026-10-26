@@ -22,6 +22,7 @@ export const ELP_TEST_TO_ASSAY: Record<string, string> = {
   "CT/NG": "CTNG",
   MTB: "MTB", "MTB-RIF/INH": "RIFINH",
   "SCoV2-QL": "SARS",
+  Malaria: "MALARIA",
 };
 
 export type UsageRow = { month: string; serial: string; systemClass: string; assay: string; runs: number; samples: number };
