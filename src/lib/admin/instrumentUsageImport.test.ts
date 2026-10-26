@@ -67,6 +67,17 @@ describe("parseSamplesPerRun", () => {
     expect(unknownTests).toEqual({});
   });
 
+  it("leaves U_HPV_GT out of HPV and reports it as not counted", () => {
+    const { rows, unknownTests } = parseSamplesPerRun(
+      usageFile([
+        { dims: ["c6800", "9", "วันอังคาร, 01 กันยายน 2569", "HPV-GT"], cells: ["90", "", ""] },
+        { dims: ["c6800", "9", "วันอังคาร, 01 กันยายน 2569", "U_HPV_GT"], cells: ["", "4", ""] },
+      ]),
+    );
+    expect(rows.map((r) => `${r.assay}:${r.runs}:${r.samples}`)).toEqual(["HPV:1:90"]);
+    expect(unknownTests).toEqual({ U_HPV_GT: 1 });
+  });
+
   it("splits months and reports tests it cannot map instead of guessing", () => {
     const { rows, months, unknownTests } = parseSamplesPerRun(
       usageFile([

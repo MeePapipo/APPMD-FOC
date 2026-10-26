@@ -13,7 +13,7 @@ import { englishLabName, instrumentKey } from "./instrumentMap";
 
 /** eLP test name -> the master-data assay family. Other names are reported, not guessed. */
 export const ELP_TEST_TO_ASSAY: Record<string, string> = {
-  "HPV-GT": "HPV", U_HPV_GT: "HPV",
+  "HPV-GT": "HPV", // U_HPV_GT is left out of FOC on purpose (praditww, 2026-08-28 / 2026-10-26)
   "HIV-1": "HIVQ",
   "HIV-1/2Qual-Serum/Plasma": "HIVQL",
   MPX: "MPX", "MPX-E": "MPX",

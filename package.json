@@ -18,6 +18,7 @@
     "import-instrument-usage": "tsx scripts/import-instrument-usage.ts",
     "apply-migrations-neon": "tsx scripts/apply-migrations-neon.ts",
     "backup-neon": "tsx scripts/backup-neon.ts",
+    "fix-usage-assay-codes": "tsx scripts/fix-usage-assay-codes.ts",
     "restore-backup": "tsx scripts/restore-backup.ts",
     "add-oncology": "tsx scripts/add-oncology.ts",
     "verify-export": "tsx scripts/verify-export.mts",
