@@ -55,6 +55,16 @@ export const ASSAY_CODE_ALIASES: Record<string, string[]> = {
   SARS: ["SARS192", "SARS480"],
 };
 
+/**
+ * eLP system class -> TPB system. c6800 and c8800 share the 6800 model; c4800
+ * quantities come from its own formula, not from TPB, so its usage is left out.
+ */
+export function batchSystemOfClass(systemClass: string): BatchSysCode | null {
+  if (systemClass === "c5800") return "5800";
+  if (systemClass === "c6800" || systemClass === "c8800") return "6800";
+  return null;
+}
+
 /** Usage rows of one account, already reduced to the months in the window. */
 export interface UsageRow {
   system: BatchSysCode;

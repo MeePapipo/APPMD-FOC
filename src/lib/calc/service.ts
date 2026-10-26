@@ -4,7 +4,7 @@ import { computeSubmission } from "./engine";
 import { mergeTests, type AssayLite, type ItemLite, type TestsBySystem, type SysCode, type ComputeOptions } from "./types";
 import type { TpbTableInput } from "./tpb";
 import { tpbNotices, type TpbMeta } from "./tpbNotices";
-import { basisForOrder, resolveAccountTpb, sumOwn, type TpbDetail, type UsageRow } from "./accountTpb";
+import { basisForOrder, batchSystemOfClass, resolveAccountTpb, sumOwn, type TpbDetail, type UsageRow } from "./accountTpb";
 
 const SYS_TO_CODE: Record<System, SysCode> = {
   [System.S6800]: "6800",
@@ -47,11 +47,12 @@ export async function loadOwnTpbByAccount(accountId?: string) {
   });
   const rowsByAccount = new Map<string, UsageRow[]>();
   for (const u of usage) {
+    const system = batchSystemOfClass(u.instrument.systemClass);
+    if (!system) continue;
     const id = u.instrument.accountId!;
     const rows = rowsByAccount.get(id) ?? [];
     rows.push({
-      // c6800 and c8800 share the 6800 model; c4800 has no TPB.
-      system: u.instrument.systemClass === "c5800" ? "5800" : "6800",
+      system,
       assay: u.assayCode,
       runs: u.runs,
       samples: u.samples,
