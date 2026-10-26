@@ -2,6 +2,7 @@ import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { TpbTable, type TpbEntryRow } from "@/components/admin/TpbTable";
 import { InstrumentUsageImportControl } from "@/components/admin/InstrumentUsageImportControl";
+import { NationalTpbFromUsage } from "@/components/admin/NationalTpbFromUsage";
 
 export default async function AdminTpbPage() {
   await requireAdmin();
@@ -39,7 +40,10 @@ export default async function AdminTpbPage() {
         floor value for its system. This directly changes BATCH-driver quantity math.
       </p>
       <InstrumentUsageImportControl />
+      <NationalTpbFromUsage />
+      {/* Remounts after a save from usage (it stamps settings.asOf), so the table shows the new values. */}
       <TpbTable
+        key={settings?.asOf?.getTime() ?? 0}
         initialEntries={entries as TpbEntryRow[]}
         initialSettings={settings}
         assays={assays}

@@ -18,7 +18,7 @@ export interface TpbNotice {
 }
 
 /** Below this share of months with data the TPB is treated as thin evidence. */
-const MIN_MONTH_COVERAGE = 0.75;
+export const MIN_MONTH_COVERAGE = 0.75;
 
 function coverage(monthsWithData: string | null): number | null {
   const m = monthsWithData?.match(/^(\d+)\s*\/\s*(\d+)$/);
