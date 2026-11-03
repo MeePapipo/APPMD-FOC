@@ -226,7 +226,8 @@ export function AccountsView({
                     onClick={() => open(r.accountName)}
                     className={cn("cursor-pointer border-b border-line/60", ROW_HOVER, r.accountName === selected && "bg-brand-tint/60")}
                   >
-                    <td className="max-w-0 px-3 py-2">
+                    {/* Room for a readable name: wraps to two lines, then clamps (full name in the tooltip). */}
+                    <td className="min-w-[11rem] max-w-[16rem] px-3 py-2 lg:min-w-[15rem] lg:max-w-[20rem] xl:min-w-[18rem] xl:max-w-[24rem]">
                       <button
                         type="button"
                         data-acct-row={r.accountName}
@@ -234,7 +235,7 @@ export function AccountsView({
                         className="block w-full text-left"
                         title={r.accountName}
                       >
-                        <span className="block truncate font-medium text-ink">{label}</span>
+                        <span className="line-clamp-2 break-words font-medium text-ink">{label}</span>
                         <span className="block text-xs text-muted">{number ? `No. ${number}` : "—"}</span>
                       </button>
                     </td>
