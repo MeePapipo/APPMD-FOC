@@ -66,13 +66,13 @@ export function AppNav({ user }: { user: NavUser }) {
       {/* A thin masthead rule rather than a graphic — brand presence without
           touching the logo mark itself. */}
       <div className="h-[3px] bg-brand" />
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
+      <div className="mx-auto flex h-16 max-w-[100rem] items-center justify-between gap-4 px-4 lg:px-6">
         <div className="flex items-center gap-8">
           <Link href="/calculator" className="flex items-center gap-2.5">
             <Logo className="h-7 w-auto text-brand" />
             <span className="hidden text-sm font-semibold text-ink sm:inline">Application Molecular</span>
           </Link>
-          <nav className="hidden items-center gap-6 md:flex">
+          <nav className="hidden items-center gap-6 lg:flex">
             {items.map((i) => (
               <NavLink key={i.href} {...i} />
             ))}
@@ -88,7 +88,7 @@ export function AppNav({ user }: { user: NavUser }) {
           </div>
           <ThemeToggle />
           {user.canChangePassword && (
-            <Link href="/change-password" className="hidden text-sm font-medium text-muted hover:text-ink md:inline">
+            <Link href="/change-password" className="hidden text-sm font-medium text-muted hover:text-ink lg:inline">
               Change password
             </Link>
           )}
@@ -106,7 +106,7 @@ export function AppNav({ user }: { user: NavUser }) {
             aria-label="Menu"
             aria-expanded={open}
             aria-controls="mobile-nav"
-            className="h-9 w-9 text-ink md:hidden"
+            className="h-9 w-9 text-ink lg:hidden"
             onClick={() => setOpen((o) => !o)}
           >
             <Menu className="h-5 w-5" aria-hidden="true" />
@@ -115,7 +115,7 @@ export function AppNav({ user }: { user: NavUser }) {
       </div>
 
       {open && (
-        <nav id="mobile-nav" className="flex flex-col gap-1 border-t border-line py-2 md:hidden">
+        <nav id="mobile-nav" className="flex flex-col gap-1 border-t border-line py-2 lg:hidden">
           {mobileItems.map((i) => (
             <MobileNavLink key={i.href} {...i} />
           ))}

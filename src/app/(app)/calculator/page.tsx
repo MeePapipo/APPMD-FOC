@@ -14,7 +14,7 @@ export default async function CalculatorPage() {
   ]));
 
   return (
-    <div className="mx-auto min-w-0 max-w-5xl">
+    <div className="min-w-0">
       <h1 className="mb-6 text-xl font-semibold text-ink">FOC Calculator</h1>
       <Calculator
         accounts={accounts.map(toAccountDTO)}

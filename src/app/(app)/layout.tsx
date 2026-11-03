@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <>
       <AppNav user={{ name: user.name, email: user.email, role: user.role, canChangePassword: !!account?.passwordHash }} />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-[100rem] flex-1 px-4 py-6 lg:px-6">{children}</main>
     </>
   );
 }

@@ -157,8 +157,8 @@ export function AccountsView({
         <p className="py-8 text-center text-sm text-muted">No accounts for this filter.</p>
       ) : (
         <>
-          {/* Phone: one compact card per account. */}
-          <ul className="divide-y divide-line border-y border-line md:hidden">
+          {/* Phone and tablet: one compact card per account. */}
+          <ul className="divide-y divide-line border-y border-line lg:hidden">
             {page.map((r) => {
               const { label, number } = splitName(r.accountName);
               return (
@@ -194,7 +194,7 @@ export function AccountsView({
           </ul>
 
           {/* Desktop: one line per account under a sticky header. */}
-          <table className="hidden w-full text-sm md:table">
+          <table className="hidden w-full text-sm lg:table">
             <thead className="text-xs text-muted">
               <tr>
                 {[ACCOUNT_NAME_COLUMN, ...columns].map((c) => (
@@ -227,7 +227,7 @@ export function AccountsView({
                     className={cn("cursor-pointer border-b border-line/60", ROW_HOVER, r.accountName === selected && "bg-brand-tint/60")}
                   >
                     {/* Room for a readable name: wraps to two lines, then clamps (full name in the tooltip). */}
-                    <td className="min-w-[11rem] max-w-[16rem] px-3 py-2 lg:min-w-[15rem] lg:max-w-[20rem] xl:min-w-[18rem] xl:max-w-[24rem]">
+                    <td className="min-w-[14rem] max-w-[20rem] px-3 py-2 xl:min-w-[18rem] xl:max-w-[24rem]">
                       <button
                         type="button"
                         data-acct-row={r.accountName}
